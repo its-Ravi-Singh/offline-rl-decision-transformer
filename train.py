@@ -1,4 +1,5 @@
 import torch
+import matplotlib.pyplot as plt
 
 def train(model, dataloader, epochs=5):
 
@@ -7,13 +8,14 @@ def train(model, dataloader, epochs=5):
 
     model.train()
 
+    epoch_losses = []
+
     for epoch in range(epochs):
         total_loss = 0
 
         for states, actions in dataloader:
 
             logits = model(states)
-
             loss = loss_fn(logits, actions)
 
             optimizer.zero_grad()
@@ -22,4 +24,15 @@ def train(model, dataloader, epochs=5):
 
             total_loss += loss.item()
 
-        print(f"Epoch {epoch}: Loss {total_loss / len(dataloader):.4f}")
+        avg_loss = total_loss / len(dataloader)
+        epoch_losses.append(avg_loss)
+
+        print(f"Epoch {epoch}: Loss {avg_loss:.4f}")
+
+    plt.figure()
+    plt.plot(range(epochs), epoch_losses, marker='o')
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training Loss Curve")
+    plt.grid(True)
+    plt.show()

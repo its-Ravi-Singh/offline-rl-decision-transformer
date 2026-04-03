@@ -1,5 +1,6 @@
 import gymnasium as gym
 import numpy as np
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
 from models.decision_transformer import PolicyNet
