@@ -7,6 +7,7 @@ from models.decision_transformer import PolicyNet
 from data.dataset import TrajectoryDataset
 from train import train
 from evaluate import evaluate
+from utils.check import save_model
 
 def generate_data(env, num_episodes=100):
 
@@ -56,6 +57,8 @@ def main():
 
     print("Evaluating...")
     evaluate(model, env)
+
+    save_model(model, "saved_models/decision_transformer.pth")
 
 
 if __name__ == "__main__":
