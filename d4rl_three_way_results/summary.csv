@@ -1,0 +1,10 @@
+split,dataset_id,model,epochs,batch_size,context_len,max_windows,eval_episodes,avg_return,std_return,min_return,max_return,model_path
+simple,mujoco/hopper/simple-v0,Decision Transformer,10,512,8,10000,5,60.356,1.146,58.611,62.221,d4rl_three_way_results/model_decision_transformer_simple.pth
+simple,mujoco/hopper/simple-v0,DT + Preference,10,512,8,10000,5,76.240,1.551,74.807,79.173,d4rl_three_way_results/model_decision_transformer_preference_simple.pth
+simple,mujoco/hopper/simple-v0,Perception Transformer,10,512,8,10000,5,593.484,3.728,588.710,598.872,d4rl_three_way_results/model_perception_transformer_simple.pth
+medium,mujoco/hopper/medium-v0,Decision Transformer,10,512,8,10000,5,23.987,1.009,22.861,25.698,d4rl_three_way_results/model_decision_transformer_medium.pth
+medium,mujoco/hopper/medium-v0,DT + Preference,10,512,8,10000,5,67.382,1.996,65.442,70.947,d4rl_three_way_results/model_decision_transformer_preference_medium.pth
+medium,mujoco/hopper/medium-v0,Perception Transformer,10,512,8,10000,5,555.263,1.248,553.890,557.609,d4rl_three_way_results/model_perception_transformer_medium.pth
+expert,mujoco/hopper/expert-v0,Decision Transformer,10,512,8,10000,5,68.563,0.154,68.352,68.790,d4rl_three_way_results/model_decision_transformer_expert.pth
+expert,mujoco/hopper/expert-v0,DT + Preference,10,512,8,10000,5,88.300,1.772,85.701,90.492,d4rl_three_way_results/model_decision_transformer_preference_expert.pth
+expert,mujoco/hopper/expert-v0,Perception Transformer,10,512,8,10000,5,80.571,4.739,75.379,86.999,d4rl_three_way_results/model_perception_transformer_expert.pth

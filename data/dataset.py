@@ -187,6 +187,35 @@ class SequenceTrajectoryDataset(Dataset):
         )
 
 
+class WeightedSequenceTrajectoryDataset(Dataset):
+    """Sequence windows with an extra scalar weight per sample."""
+
+    def __init__(self, base_dataset: SequenceTrajectoryDataset, weights: np.ndarray):
+        if len(base_dataset) != len(weights):
+            raise ValueError("weights must match the number of sequence windows")
+        self.base_dataset = base_dataset
+        self.weights = np.asarray(weights, dtype=np.float32)
+
+    @property
+    def buffer(self):
+        return self.base_dataset.buffer
+
+    @property
+    def state_dim(self):
+        return self.base_dataset.state_dim
+
+    @property
+    def act_dim(self):
+        return self.base_dataset.act_dim
+
+    def __len__(self):
+        return len(self.base_dataset)
+
+    def __getitem__(self, i):
+        sample = self.base_dataset[i]
+        return sample + (torch.tensor(self.weights[i], dtype=torch.float32),)
+
+
 class PreferencePairDataset(Dataset):
     def __init__(self, pairs: Dict[str, np.ndarray]):
         self.pairs = pairs

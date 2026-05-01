@@ -1,7 +1,7 @@
 split,dataset_id,model,env,epochs,batch_size,context_len,max_windows,max_transitions,eval_episodes,target_rtg,model_path,avg_return,std_return,min_return,max_return
-simple,mujoco/hopper/simple-v0,Decision Transformer,Hopper-v4,10,512,8,10000,,10,3000.0,d4rl_results/model_decision_transformer_simple.pth,18.905,0.193,18.604,19.331
-simple,mujoco/hopper/simple-v0,Perception Transformer,Hopper-v4,10,512,8,10000,,10,3000.0,d4rl_results/model_perception_transformer_simple.pth,201.200,2.250,197.923,204.526
-medium,mujoco/hopper/medium-v0,Decision Transformer,Hopper-v4,10,512,8,10000,,10,3000.0,d4rl_results/model_decision_transformer_medium.pth,23.062,0.813,21.710,24.858
-medium,mujoco/hopper/medium-v0,Perception Transformer,Hopper-v4,10,512,8,10000,,10,3000.0,d4rl_results/model_perception_transformer_medium.pth,552.834,2.327,550.545,559.115
-expert,mujoco/hopper/expert-v0,Decision Transformer,Hopper-v4,10,512,8,10000,,10,3000.0,d4rl_results/model_decision_transformer_expert.pth,54.826,0.901,53.370,56.468
-expert,mujoco/hopper/expert-v0,Perception Transformer,Hopper-v4,10,512,8,10000,,10,3000.0,d4rl_results/model_perception_transformer_expert.pth,78.317,2.153,75.495,82.181
+simple,mujoco/hopper/simple-v0,Decision Transformer,Hopper-v4,10,512,8,10000,,5,3000.0,d4rl_results/model_decision_transformer_simple.pth,22.082,0.390,21.428,22.595
+simple,mujoco/hopper/simple-v0,Perception Transformer,Hopper-v4,10,512,8,10000,,5,3000.0,d4rl_results/model_perception_transformer_simple.pth,352.243,99.031,228.640,441.302
+medium,mujoco/hopper/medium-v0,Decision Transformer,Hopper-v4,10,512,8,10000,,5,3000.0,d4rl_results/model_decision_transformer_medium.pth,14.832,0.113,14.686,14.986
+medium,mujoco/hopper/medium-v0,Perception Transformer,Hopper-v4,10,512,8,10000,,5,3000.0,d4rl_results/model_perception_transformer_medium.pth,467.430,1.261,465.628,469.218
+expert,mujoco/hopper/expert-v0,Decision Transformer,Hopper-v4,10,512,8,10000,,5,3000.0,d4rl_results/model_decision_transformer_expert.pth,96.915,2.054,94.697,100.284
+expert,mujoco/hopper/expert-v0,Perception Transformer,Hopper-v4,10,512,8,10000,,5,3000.0,d4rl_results/model_perception_transformer_expert.pth,75.169,56.147,29.152,144.038

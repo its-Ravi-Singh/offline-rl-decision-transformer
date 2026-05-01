@@ -9,9 +9,9 @@ We built an offline RL pipeline for MuJoCo continuous control. The main idea was
 ## What We Did
 
 1. Trained return-conditioned transformer policies from fixed offline data — no online environment interaction during training.
-2. Compared our Decision Transformer against a simpler Perception Transformer across Hopper simple, medium, and expert splits.
+2. Compared Decision Transformer, DT + Preference, and Perception Transformer across Hopper simple, medium, and expert splits.
 3. Generated segment-level preference pairs from offline trajectories.
-4. Trained a preference model and analyzed its errors before using it as a reward proxy.
+4. Trained a preference model, analyzed its errors, and used it to reweight Decision Transformer training windows.
 
 We started with CartPole for quick testing but moved to the real D4RL Hopper benchmark after the checkpoint feedback.
 
@@ -20,7 +20,8 @@ We started with CartPole for quick testing but moved to the real D4RL Hopper ben
 ```text
 .
 |-- main.py                         # train + eval Decision Transformer on one dataset
-|-- d4rl_compare.py                 # benchmark both models on all three Hopper splits
+|-- d4rl_compare.py                 # benchmark DT and Perception on all three Hopper splits
+|-- d4rl_compare_three.py           # benchmark DT, DT + Preference, and Perception
 |-- train.py                        # training loop shared by both models
 |-- evaluate.py                     # live Gymnasium rollout evaluation
 |-- train_perception.py             # train the Perception Transformer
@@ -76,6 +77,12 @@ Override with env vars:
 DATASET_ID=mujoco/hopper/medium-v0 EPOCHS=30 python3 main.py
 ```
 
+By default, if a trained preference model exists, `main.py` uses it to weight DT sequence windows. To train the normal DT without preference weighting:
+
+```bash
+USE_PREFERENCE_WEIGHTS=0 python3 main.py
+```
+
 ## Run the Benchmark
 
 ```bash
@@ -83,6 +90,35 @@ EPOCHS=10 BATCH_SIZE=512 CONTEXT_LEN=8 N_EVAL=10 MAX_WINDOWS=10000 python3 d4rl_
 ```
 
 Trains both models on all three Hopper splits and saves results to `d4rl_results/`.
+
+For the final three-way benchmark:
+
+```bash
+EPOCHS=10 BATCH_SIZE=512 CONTEXT_LEN=8 N_EVAL=5 MAX_WINDOWS=10000 python3 d4rl_compare_three.py
+```
+
+This compares Decision Transformer, DT + Preference, and Perception Transformer.
+
+Latest three-way benchmark:
+
+| Split | Decision Transformer | DT + Preference | Perception Transformer |
+| --- | ---: | ---: | ---: |
+| Simple | 60.4 | 76.2 | 593.5 |
+| Medium | 24.0 | 67.4 | 555.3 |
+| Expert | 68.6 | 88.3 | 80.6 |
+
+The preference-weighted DT improved over the normal DT on all three splits. Perception was strongest on simple and medium, while DT + Preference was strongest on expert.
+
+## Model Architecture
+
+| Model | Hidden Dim | Layers | Heads | Main Input |
+| --- | ---: | ---: | ---: | --- |
+| Decision Transformer | 128 | 3 | 4 | RTG, state, action sequence |
+| DT + Preference | 128 | 3 | 4 | Same DT architecture with weighted sequence loss |
+| Perception Transformer | 256 | 2 | 4 | Current state and RTG |
+| Preference Model | 128 | 2 | 4 | Paired trajectory segments |
+
+Decision Transformer turns each timestep into three tokens: RTG, state, and action. With context length 8, that gives 24 tokens per window. Perception Transformer uses 8 learned latent tokens and cross-attention over the state and RTG tokens. The preference model scores trajectory segments and gives higher weights to windows that look better.
 
 ## Preference Learning
 
@@ -104,6 +140,17 @@ python3 analyze_preference_errors.py
 
 Checks where the model was wrong and how confident it was when it messed up. Saves flagged cases to `preference_results/preference_error_cases.csv`.
 
+## Preference-Weighted DT
+
+After preference training, DT windows are scored by the preference model. Higher-score windows get larger sample weights in the DT action MSE loss:
+
+```text
+higher preference score -> larger DT loss weight
+lower preference score -> smaller DT loss weight
+```
+
+This is offline preference-weighted behavior cloning, not full online RLHF.
+
 ## Deployment
 
 Launch using Gradio:
@@ -113,20 +160,6 @@ MODEL_CHECKPOINT=saved_models/decision_transformer_d4rl.pth python3 gradio_app.p
 ```
 
 Then open `http://127.0.0.1:8000`. Tab 1 lets you test the action predictor, Tab 2 runs a live Hopper episode and records a video.
-
-## Checkpoint Feedback & Task Checklist
-
-- [x] Migrate DT baseline to D4RL benchmarks (Hopper) instead of CartPole. (Done)
-- [x] Build the preference-pair generation pipeline from offline trajectories.
-- [x] Implement and train the preference model.
-- [x] Analyze preference model errors and build a detection script.
-- [x] Benchmark both models, plot training curves, compare results.
-- [x] Set up Gradio demo and rollout scripts.
-
-**TODOs for later (if we have time):**
-- run on walker2d properly
-- tune the hyperparameters more (batch size etc)
-- connect preference model back to the policy to see if it improves things
 
 ## References
 

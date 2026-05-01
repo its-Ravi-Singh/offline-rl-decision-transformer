@@ -24,11 +24,16 @@ def get_device():
 
 # masked mse — ignores padded timesteps
 # had to write this manually bc pytorch doesnt have a built in one
-def _masked_mse(pred, target, mask=None):
+def _masked_mse(pred, target, mask=None, sample_weight=None):
     loss = (pred - target).pow(2).mean(dim=-1)
     if mask is None:
-        return loss.mean()
-    return (loss * mask).sum() / mask.sum().clamp_min(1.0)
+        loss = loss.mean(dim=-1) if loss.dim() > 1 else loss
+    else:
+        loss = (loss * mask).sum(dim=-1) / mask.sum(dim=-1).clamp_min(1.0)
+    if sample_weight is not None:
+        loss = loss * sample_weight
+        return loss.sum() / sample_weight.sum().clamp_min(1.0)
+    return loss.mean()
 
 
 def train(
@@ -71,6 +76,16 @@ def train(
                 mask = mask.to(device)
                 pred = model(states, actions=actions, rtgs=rtgs, timesteps=timesteps, attention_mask=mask)
                 loss = _masked_mse(pred, actions, mask)
+            elif len(batch) == 6:
+                states, actions, rtgs, timesteps, mask, sample_weight = batch
+                states = states.to(device)
+                actions = actions.to(device)
+                rtgs = rtgs.to(device)
+                timesteps = timesteps.to(device)
+                mask = mask.to(device)
+                sample_weight = sample_weight.to(device)
+                pred = model(states, actions=actions, rtgs=rtgs, timesteps=timesteps, attention_mask=mask)
+                loss = _masked_mse(pred, actions, mask, sample_weight=sample_weight)
             else:
                 states, actions, rtgs = batch
                 states = states.to(device)

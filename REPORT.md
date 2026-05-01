@@ -10,11 +10,11 @@
 
 ## Overview
 
-For our final project we tried to apply offline reinforcement learning to a continuous-control MuJoCo task. The main idea came from the Decision Transformer paper [[1]](https://arxiv.org/abs/2106.01345) where they treat offline RL as a sequence modeling problem — instead of learning value functions or doing policy gradients, you just train a transformer to predict actions conditioned on past states and a desired return.
+For our final project, we worked on offline reinforcement learning for a continuous-control MuJoCo task. The main idea came from the Decision Transformer paper [[1]](https://arxiv.org/abs/2106.01345), where offline RL is treated more like a sequence modeling problem. Instead of learning a value function or doing policy gradients, the model learns to predict actions from past states, past actions, and a desired return.
 
-We used the Minari/D4RL Hopper datasets [[2]](https://arxiv.org/abs/2004.07219) for training and evaluation. We also built a preference learning pipeline on top of the baseline, loosely inspired by the RLHF work from Christiano et al. [[3]](https://arxiv.org/abs/1706.03741), to see how the model behaves when preferences are noisy.
+We used the Minari/D4RL Hopper datasets [[2]](https://arxiv.org/abs/2004.07219) for training and evaluation. On top of the Decision Transformer baseline, we added a preference learning pipeline, loosely inspired by the RLHF work from Christiano et al. [[3]](https://arxiv.org/abs/1706.03741). Our goal was to see whether preference labels could be used to guide offline policy training, and also to check what happens when those labels are noisy or wrong.
 
-The two main things the instructor flagged at the checkpoint were (1) we were still using CartPole which doesn't really validate the offline RL direction, and (2) there was no preference pair generation pipeline in place. Both of those are addressed in this final submission.
+At the checkpoint, the two main issues were that we were still using CartPole and that we did not yet have preference pairs. CartPole was useful for debugging, but it was too simple for the actual offline RL direction. In the final version, we moved to Hopper and added preference pair generation, preference training, and preference error analysis.
 
 ---
 
@@ -28,7 +28,7 @@ We used three Hopper splits from Minari [[4]](https://minari.farama.org/):
 | Medium | mujoco/hopper/medium-v0 | Hopper-v4 |
 | Expert | mujoco/hopper/expert-v0 | Hopper-v4 |
 
-Each episode has observations, actions, and rewards. We compute a return-to-go (RTG) for every timestep by summing future rewards backwards. We normalize it by dividing by 3000.0 before passing it into the model.
+Each episode contains observations, actions, and rewards. For every timestep, we compute return-to-go (RTG) by summing future rewards backward through the episode. We then normalize RTG by dividing by 3000.0 before passing it into the model.
 
 ---
 
@@ -36,7 +36,21 @@ Each episode has observations, actions, and rewards. We compute a return-to-go (
 
 ### Decision Transformer
 
-The Decision Transformer is the causal sequence model from [[1]](https://arxiv.org/abs/2106.01345). It takes a window of past RTGs, states, and actions and predicts the next action. We implemented it from scratch in PyTorch using a TransformerEncoder with a causal mask.
+The Decision Transformer is the causal sequence model from [[1]](https://arxiv.org/abs/2106.01345). It takes a window of past RTGs, states, and actions and predicts the next action. We implemented it in PyTorch using a TransformerEncoder with a causal mask.
+
+Architecture details:
+
+| Setting | Value |
+| --- | ---: |
+| State dimension | 11 |
+| Action dimension | 3 |
+| Hidden dimension | 128 |
+| Transformer layers | 3 |
+| Attention heads | 4 |
+| Feedforward dimension | 512 |
+| Dropout | 0.1 |
+
+Each timestep is converted into three tokens: RTG, state, and action. So with context length 8 in the latest benchmark, the transformer sees 24 tokens per window. With the normal context length 20, it sees 60 tokens. Since the hidden size is 128 and there are 4 attention heads, each head works on 32 dimensions.
 
 | Component | Parameters |
 | --- | ---: |
@@ -49,7 +63,7 @@ The Decision Transformer is the causal sequence model from [[1]](https://arxiv.o
 | Action head | 387 |
 | **Total** | **726,147** |
 
-The training loss is masked MSE on actions. Basically for each timestep we compute (predicted_action - actual_action)^2 and then only average over the non-padded steps:
+The training loss is masked MSE on actions. For each timestep, we compare the predicted action with the action from the dataset, then average only over real timesteps and ignore padding:
 
 $$
 \mathcal{L} = \frac{\sum_i \sum_t m_{i,t} \|\hat{a}_{i,t} - a_{i,t}\|^2}{\sum_i \sum_t m_{i,t}}
@@ -61,6 +75,21 @@ where m is 1 for real timesteps and 0 for padding.
 
 We also built a simpler comparison model. Instead of looking at a full history, it just takes the current state and target RTG and predicts an action. We used a Perceiver-style architecture with learned latent tokens and cross-attention.
 
+Architecture details:
+
+| Setting | Value |
+| --- | ---: |
+| State dimension | 11 |
+| Action dimension | 3 |
+| Hidden dimension | 256 |
+| Learned latent tokens | 8 |
+| Transformer layers | 2 |
+| Attention heads | 4 |
+| Feedforward dimension | 1024 |
+| Dropout | 0.1 |
+
+The input has two tokens: one state token and one RTG token. The 8 learned latent tokens attend to those input tokens using cross-attention, then the latent tokens go through the transformer encoder. Since the hidden size is 256 and there are 4 heads, each attention head works on 64 dimensions.
+
 | Component | Parameters |
 | --- | ---: |
 | State embedding | 3,072 |
@@ -70,19 +99,40 @@ We also built a simpler comparison model. Instead of looking at a full history, 
 | Action head | 67,075 |
 | **Total** | **1,916,419** |
 
-It's bigger but simpler to evaluate because you don't need to maintain a history buffer. In our bounded benchmark it actually outperforms the DT on two of the three splits.
+This model is larger than the Decision Transformer, but it is simpler at evaluation time because it does not need a history buffer. In our bounded benchmark, it did better than the Decision Transformer on two of the three Hopper splits.
 
 ### Preference Model
 
-To handle the preference learning part, we built a transformer encoder that scores trajectory segments. The preference model scores each segment and we use a Bradley-Terry loss (from [[3]](https://arxiv.org/abs/1706.03741)) to train it. The idea is whichever segment gets a higher score is predicted as preferred:
+For preference learning, we built a transformer encoder that scores trajectory segments. The model gives one score to the left segment and one score to the right segment. We train it with a Bradley-Terry style objective from [[3]](https://arxiv.org/abs/1706.03741), where the segment with the higher score is treated as the preferred one:
+
+Architecture details:
+
+| Setting | Value |
+| --- | ---: |
+| Input per timestep | state + action + RTG |
+| Input dimension | 15 |
+| Hidden dimension | 128 |
+| Transformer layers | 2 |
+| Attention heads | 4 |
+| Feedforward dimension | 512 |
+
+The preference model first projects each timestep from 15 dimensions to 128. It then runs a transformer encoder over the segment and averages the hidden states to get one segment representation. A small score head maps that representation to one scalar preference score. With 4 attention heads and hidden size 128, each head works on 32 dimensions.
 
 ```
 P(left preferred) = exp(score_left) / (exp(score_left) + exp(score_right))
 ```
 
-and the loss is just cross entropy against the label. We used the softmax formulation in code.
+In the code, this is a softmax over the two segment scores followed by cross entropy against the preference label.
 
-Labels come from comparing segment returns — whichever segment had higher total reward is "preferred". We can also inject noise to test robustness.
+The labels are generated from segment returns. Whichever segment has higher total reward is marked as preferred. We can also flip a fraction of labels to simulate noisy preferences.
+
+After training the preference model, we used it to score Decision Transformer training windows. We convert each score into a sample weight, so windows that look better to the preference model count more in the action MSE update:
+
+$$
+\mathcal{L}_{pref-DT} = \frac{\sum_i w_i \mathcal{L}_i}{\sum_i w_i}
+$$
+
+Here, \(w_i\) is the preference-derived weight for one trajectory window. This is not full online RLHF, but it gives us a practical way to connect the preference model back to offline policy training.
 
 ---
 
@@ -98,51 +148,106 @@ Labels come from comparing segment returns — whichever segment had higher tota
 
 ---
 
+## Preference Training
+
+The preference model is trained before it is used to update the Decision Transformer. We generate pairs of short trajectory segments from the offline Hopper data. Each pair has a left segment and a right segment, and each segment contains states, actions, and RTGs.
+
+The preference label comes from the segment return. If the left segment has the higher total reward, the label is left. If the right segment has the higher total reward, the label is right. We also keep the clean label and the return gap so we can later check where the preference model makes mistakes.
+
+For training, the preference model scores both segments:
+
+```text
+left segment -> score_left
+right segment -> score_right
+```
+
+The two scores are treated as logits, and we train with cross entropy against the preferred side. This is the Bradley-Terry style setup described earlier.
+
+In our preference run, we trained on 2,000 generated segment pairs for 5 epochs. The validation accuracy improved during training:
+
+![preference training](preference_results/preference_training.png)
+
+*Figure 1 — Preference model training loss and validation accuracy.*
+
+| Epoch | Loss | Validation Accuracy |
+| ---: | ---: | ---: |
+| 1 | 0.6250 | 0.780 |
+| 2 | 0.4756 | 0.843 |
+| 3 | 0.3566 | 0.882 |
+| 4 | 0.2755 | 0.927 |
+| 5 | 0.2272 | 0.912 |
+
+After training, we used this preference model to score Decision Transformer windows. Higher-scoring windows received larger weights in the DT action loss.
+
+---
+
 ## Results
 
-![benchmark comparison](d4rl_results/d4rl_comparison.png)
+![benchmark comparison](d4rl_three_way_results/three_way_comparison.png)
 
-*Figure 1 — Training loss curves and live Hopper-v4 evaluation returns.*
+*Figure 2 — Three-way Hopper-v4 benchmark returns.*
 
 | Split | Model | Avg Return | Std | Min / Max |
 | --- | --- | ---: | ---: | ---: |
-| Simple | Decision Transformer | 18.9 | 0.2 | 18.6 / 19.3 |
-| Simple | Perception Transformer | 201.2 | 2.3 | 197.9 / 204.5 |
-| Medium | Decision Transformer | 23.1 | 0.8 | 21.7 / 24.9 |
-| Medium | Perception Transformer | 552.8 | 2.3 | 550.5 / 559.1 |
-| Expert | Decision Transformer | 54.8 | 0.9 | 53.4 / 56.5 |
-| Expert | Perception Transformer | 78.3 | 2.2 | 75.5 / 82.2 |
+| Simple | Decision Transformer | 60.4 | 1.1 | 59 / 62 |
+| Simple | DT + Preference | 76.2 | 1.6 | 75 / 79 |
+| Simple | Perception Transformer | 593.5 | 3.7 | 589 / 599 |
+| Medium | Decision Transformer | 24.0 | 1.0 | 23 / 26 |
+| Medium | DT + Preference | 67.4 | 2.0 | 65 / 71 |
+| Medium | Perception Transformer | 555.3 | 1.2 | 554 / 558 |
+| Expert | Decision Transformer | 68.6 | 0.2 | 68 / 69 |
+| Expert | DT + Preference | 88.3 | 1.8 | 86 / 90 |
+| Expert | Perception Transformer | 80.6 | 4.7 | 75 / 87 |
 
-The Perception Transformer did better on simple and expert, while the DT was better on medium. We think the DT probably needs more data and longer sequences to really shine — the bounded 10k sample budget likely hurts it more than the one-step model.
+For the final benchmark, we trained each model for 10 epochs with a bounded 10,000-sample budget and evaluated each one over 5 Hopper-v4 episodes. The preference version used the trained preference model to weight Decision Transformer training windows.
 
-Training curves:
+The main result is that DT + Preference improved over the normal Decision Transformer on all three splits. The improvement was small on simple, larger on medium, and also visible on expert. Perception Transformer still did much better on simple and medium, but on expert the preference-updated DT got the best average return.
 
-| Split | DT Loss | PT Loss |
-| --- | --- | --- |
-| Simple | ![](d4rl_results/loss_decision_transformer_simple.png) | ![](d4rl_results/loss_perception_transformer_simple.png) |
-| Medium | ![](d4rl_results/loss_decision_transformer_medium.png) | ![](d4rl_results/loss_perception_transformer_medium.png) |
-| Expert | ![](d4rl_results/loss_decision_transformer_expert.png) | ![](d4rl_results/loss_perception_transformer_expert.png) |
+This means the preference model did help the Decision Transformer, but it did not make it the strongest model overall. The one-step Perception Transformer was still much easier to train under the bounded setup.
 
-![DT standalone training loss](plots/decision_transformer_training_loss.png)
-*Figure 2 — DT training loss from the single-model run.*
-![PT standalone training loss](plots/perception_transformer_training_loss.png)
-*Figure 3 — PT training loss from the single-model run.*
+### Saved Policy Benchmark
+
+We also compared saved policies directly after the preference update. This separate check used the baseline DT, the preference-updated DT, and the Perception Transformer with the same Hopper-v4 evaluation setup.
+
+| Model | Avg Return | Std | Min / Max |
+| --- | ---: | ---: | ---: |
+| Baseline DT | 23.6 | 0.7 | 23 / 24 |
+| Preference-updated DT | 43.3 | 2.0 | 41 / 46 |
+| Perception Transformer | 1325.6 | 655.7 | 36 / 1825 |
+
+The preference-updated DT improved over the baseline DT in this saved-checkpoint run, which suggests that the preference weighting did move the policy in a useful direction. However, the Perception Transformer performed much better overall in that comparison. Its standard deviation was also very high, so the evaluation was not completely stable, but its average return was still far above both DT variants.
+
+The main takeaway is that preference weighting helped the Decision Transformer, but it did not close the gap to the simpler Perception Transformer. We do not want to overclaim from this result because it uses only 5 evaluation episodes and a bounded 10,000-window fine-tuning set.
+
+![baseline vs preference-updated DT](model_comparison/dt_baseline_vs_updated.png)
+
+*Figure 3 — Saved policy benchmark comparing baseline DT, preference-updated DT, and Perception Transformer.*
+
+Training curves from the 10-epoch benchmark:
+
+| Split | DT Loss | DT + Preference Loss | Perception Loss |
+| --- | --- | --- | --- |
+| Simple | ![](d4rl_three_way_results/loss_decision_transformer_simple.png) | ![](d4rl_three_way_results/loss_decision_transformer_preference_simple.png) | ![](d4rl_three_way_results/loss_perception_transformer_simple.png) |
+| Medium | ![](d4rl_three_way_results/loss_decision_transformer_medium.png) | ![](d4rl_three_way_results/loss_decision_transformer_preference_medium.png) | ![](d4rl_three_way_results/loss_perception_transformer_medium.png) |
+| Expert | ![](d4rl_three_way_results/loss_decision_transformer_expert.png) | ![](d4rl_three_way_results/loss_decision_transformer_preference_expert.png) | ![](d4rl_three_way_results/loss_perception_transformer_expert.png) |
+
+*Figure 4 — Training loss curves for the three-way 10-epoch benchmark.*
 
 ---
 
 ## Preference Error Analysis
 
-One thing we wanted to check was: if the preference model makes mistakes, how bad are they? High-confidence wrong predictions are especially dangerous because the model would push the policy in the wrong direction.
+One thing we wanted to check was how serious the preference model's mistakes were. High-confidence wrong predictions are the most concerning, because those are the cases where the model would push training in the wrong direction with a lot of confidence.
 
-We wrote `analyze_preference_errors.py` to flag cases where the model is confident but disagrees with the clean return-derived label. It also computes the return gap between segments to separate obviously easy pairs from ambiguous ones.
+We added an error analysis step to flag cases where the model is confident but disagrees with the clean return-derived label. It also computes the return gap between segments, which helps separate obvious pairs from more ambiguous ones.
 
-The model right now is purely diagnostic — we haven't hooked it back into the policy yet, which is a next step.
+For the preference-update experiment, we used this trained model as a trajectory-window reweighting signal for the Decision Transformer. The error analysis still matters because high-confidence wrong preference predictions would increase the weight of bad training windows.
 
 ---
 
 ## Deployment
 
-We set up a Gradio web app [[5]](https://www.gradio.app/) with two tabs:
+We also set up a Gradio web app [[5]](https://www.gradio.app/) with two tabs:
 - **Predict Action** — enter a state and RTG, get the model's predicted action
 - **Run Hopper Episode** — run a live episode and get a video recording
 
@@ -153,27 +258,18 @@ We set up a Gradio web app [[5]](https://www.gradio.app/) with two tabs:
 - Benchmark is bounded to 10,000 samples per split, not tuned.
 - Results are from a single run — no seed averaging.
 - Walker2d support exists but no recorded results.
-- Preference model is not yet connected back to policy training.
+- Preference model is connected through sample weighting, not through online reward learning or policy optimization.
+- Preference-updated DT comparison uses only 5 evaluation episodes, so it is a sanity check rather than a stable benchmark.
 
 ---
 
 ## What's Next
 
-1. Use preference scores to filter or reweight offline trajectories.
-2. Relabel RTG targets with preference model predictions.
-3. Test policy degradation as preference noise increases.
-4. Run longer experiments with multiple seeds.
-
----
-
-## Checkpoint Feedback & Tasks
-
-- [x] Migrate DT baseline to D4RL Hopper benchmarks.
-- [x] Build preference-pair generation pipeline.
-- [x] Implement and train preference model.
-- [x] Analyze preference model errors.
-- [x] Benchmark both models and compare.
-- [x] Set up deployment (Gradio demo + rollout scripts).
+1. Run the three-model benchmark with more evaluation episodes and multiple random seeds.
+2. Tune the Decision Transformer more carefully, especially context length, number of windows, and training epochs.
+3. Try stronger ways of using preferences, such as filtering low-score windows instead of only reweighting them.
+4. Test how much label noise the preference model can handle before it starts hurting DT performance.
+5. Run the same setup on Walker2d to check whether the results transfer beyond Hopper.
 
 ---
 
