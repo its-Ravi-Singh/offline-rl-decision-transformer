@@ -1,9 +1,11 @@
 import torch
 
+
 def save_model(model, path):
     torch.save(model.state_dict(), path)
 
-def load_model(model, path):
-    model.load_state_dict(torch.load(path))
+
+def load_model(model, path, map_location=None):
+    model.load_state_dict(torch.load(path, map_location=map_location))
     model.eval()
     return model
