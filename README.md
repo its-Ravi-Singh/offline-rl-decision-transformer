@@ -97,7 +97,7 @@ Trains both models on all three Hopper splits and saves results to `d4rl_results
 | Expert | Decision Transformer | 54.8 | 0.9 | 53.4 / 56.5 |
 | Expert | Perception Transformer | 78.3 | 2.2 | 75.5 / 82.2 |
 
-These are bounded integration results, not final tuned D4RL numbers. We kept training short so the full pipeline would finish in reasonable time.
+*Note: These are bounded integration results, not final tuned D4RL numbers. We kept training short so the full pipeline would finish in reasonable time, and PT ended up doing better on Simple/Expert.*
 
 ## Training Curves
 
@@ -145,12 +145,17 @@ Then open `http://127.0.0.1:8000`. Tab 1 lets you test the action predictor, Tab
 
 ## Checkpoint Feedback & Task Checklist
 
-- [x] Migrate DT baseline to D4RL benchmarks (Hopper) instead of CartPole.
+- [x] Migrate DT baseline to D4RL benchmarks (Hopper) instead of CartPole. (Done)
 - [x] Build the preference-pair generation pipeline from offline trajectories.
 - [x] Implement and train the preference model.
 - [x] Analyze preference model errors and build a detection script.
 - [x] Benchmark both models, plot training curves, compare results.
 - [x] Set up Gradio demo and rollout scripts.
+
+**TODOs for later (if we have time):**
+- run on walker2d properly
+- tune the hyperparameters more (batch size etc)
+- connect preference model back to the policy to see if it improves things
 
 ## References
 

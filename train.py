@@ -91,8 +91,9 @@ def train(
 
         if avg < best_loss - min_delta:
             best_loss = avg
-            # save a copy of the weights at the best point
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            # just save the state dict, load it back at the end
+            import copy
+            best_state = copy.deepcopy(model.state_dict())
             no_improve = 0
         else:
             no_improve += 1

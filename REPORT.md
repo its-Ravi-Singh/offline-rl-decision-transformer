@@ -49,13 +49,13 @@ The Decision Transformer is the causal sequence model from [[1]](https://arxiv.o
 | Action head | 387 |
 | **Total** | **726,147** |
 
-The training loss is masked MSE on actions:
+The training loss is masked MSE on actions. Basically for each timestep we compute (predicted_action - actual_action)^2 and then only average over the non-padded steps:
 
 $$
 \mathcal{L} = \frac{\sum_i \sum_t m_{i,t} \|\hat{a}_{i,t} - a_{i,t}\|^2}{\sum_i \sum_t m_{i,t}}
 $$
 
-where $m_{i,t}$ is 0 for padded timesteps.
+where m is 1 for real timesteps and 0 for padding.
 
 ### Perception Transformer
 
@@ -74,15 +74,13 @@ It's bigger but simpler to evaluate because you don't need to maintain a history
 
 ### Preference Model
 
-To handle the preference learning part, we built a transformer encoder that scores trajectory segments. Given two segments, the model assigns a scalar score to each and we train it with a Bradley-Terry cross-entropy loss [[3]](https://arxiv.org/abs/1706.03741):
+To handle the preference learning part, we built a transformer encoder that scores trajectory segments. The preference model scores each segment and we use a Bradley-Terry loss (from [[3]](https://arxiv.org/abs/1706.03741)) to train it. The idea is whichever segment gets a higher score is predicted as preferred:
 
-$$
-P(\text{left preferred}) = \frac{e^{u_l}}{e^{u_l} + e^{u_r}}
-$$
+```
+P(left preferred) = exp(score_left) / (exp(score_left) + exp(score_right))
+```
 
-$$
-\mathcal{L}_\text{pref} = -\log \operatorname{softmax}([u_l,\; u_r])_y
-$$
+and the loss is just cross entropy against the label. We used the softmax formulation in code.
 
 Labels come from comparing segment returns — whichever segment had higher total reward is "preferred". We can also inject noise to test robustness.
 
