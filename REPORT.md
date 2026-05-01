@@ -1,6 +1,6 @@
 # Final Project Report — Offline RL Decision Transformer with Preference Learning
 
-**CSE 676 Deep Learning**
+**Deep Learning and Reinforcement Learning**
 
 **Team:** Gradient Gone Wild
 

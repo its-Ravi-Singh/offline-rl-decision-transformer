@@ -1,6 +1,6 @@
 # Offline RL Decision Transformer with Preference Learning
 
-**CSE 676 Deep Learning — Team Gradient Gone Wild**
+**Deep Learning and Reinforcement Learning — Team Gradient Gone Wild**
 
 **Members:** Hemanth Phani Srinivas Chilamkurthy, Ravi Rajaram Singh
 
