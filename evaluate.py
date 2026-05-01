@@ -1,80 +1,86 @@
 import numpy as np
-import torch
-from collections import Counter
-
-from utils.visualize import record_episode
+import gymnasium as gym
 
 
-def evaluate(model, env, num_episodes=20):
+def evaluate(
+    model,
+    env_name="Hopper-v4",
+    num_episodes=20,
+    target_rtg_max=3000.0,
+    record_video=True,
+):
+
+    env = gym.make(env_name, render_mode="rgb_array")
+    video_enabled = False
+    if record_video:
+        try:
+            env = gym.wrappers.RecordVideo(
+                env,
+                video_folder="results",
+                episode_trigger=lambda x: x == 0,
+                disable_logger=True,
+            )
+            video_enabled = True
+        except gym.error.DependencyNotInstalled as exc:
+            print(f"Video recording disabled: {exc}")
+
+    returns = []
 
     model.eval()
 
-    episode_returns = []
-    all_actions = []
 
-    for ep in range(num_episodes):
+    for _ in range(num_episodes):
+        obs, _ = env.reset()
+        ep_reward = 0.0
 
-        state, _ = env.reset()
-        total_reward = 0
+
+        rtg = 1.0
+        state_history = [obs.astype(np.float32)]
+        action_history = [np.zeros(getattr(model, "act_dim", env.action_space.shape[0]), dtype=np.float32)]
+        rtg_history = [rtg]
         done = False
 
         while not done:
+            try:
+                a = model.act(
+                    obs.astype(np.float32),
+                    target_rtg=rtg,
+                    state_history=state_history,
+                    action_history=action_history,
+                    rtg_history=rtg_history,
+                )
+            except TypeError:
+                a = model.act(obs.astype(np.float32), target_rtg=rtg)
 
-            action = model.act(state)
 
-            all_actions.append(action)
+            a = np.clip(a, -1.0, 1.0)
 
-            state, reward, terminated, truncated, _ = env.step(action)
-            done = terminated or truncated
+            obs, rew, term, trunc, _ = env.step(a)
+            ep_reward += rew
 
-            total_reward += reward
 
-        episode_returns.append(total_reward)
+            rtg -= rew / (target_rtg_max + 1e-8)
+            state_history.append(obs.astype(np.float32))
+            action_history.append(a.astype(np.float32))
+            rtg_history.append(float(rtg))
+            done = term or trunc
 
-    # ---------- Metrics ----------
-    avg_return = np.mean(episode_returns)
-    std_return = np.std(episode_returns)
+        returns.append(ep_reward)
 
-    print("\n===== EVALUATION REPORT =====")
-    print(f"Episodes: {num_episodes}")
-    print(f"Average Return: {avg_return:.2f}")
-    print(f"Std Return: {std_return:.2f}")
+    env.close()
 
-    # ---------- Action Distribution ----------
-    action_counts = Counter(all_actions)
-    total_actions = sum(action_counts.values())
+    mean_r = np.mean(returns)
+    std_r  = np.std(returns)
 
-    print("\nAction Distribution:")
-    for action, count in action_counts.items():
-        print(f"Action {action}: {count} ({count/total_actions:.2%})")
-
-    # ---------- Policy Behavior Diagnosis ----------
-    if len(action_counts) == 1:
-        print("\n⚠️ Model is collapsing to a single action → no learning")
-    elif max(action_counts.values()) / total_actions > 0.9:
-        print("\n⚠️ Highly biased policy → still near-random or collapsed")
-    else:
-        print("\n✅ Policy has some diversity")
-
-    # ---------- Performance Diagnosis ----------
-    if avg_return < 20:
-        print("\n❌ Model is behaving like a random policy")
-        print("Possible issues:")
-        print("- Training data is random (no expert supervision)")
-        print("- Model underfitting")
-        print("- Labels not informative")
-
-    elif avg_return < 100:
-        print("\n⚠️ Model learned something but still weak")
-
-    else:
-        print("\n✅ Strong policy")
-
-    # ---------- Save rollout video ----------
-    record_episode(env, model)
+    print(f"\nAverage Score: {mean_r:.1f} | Std Dev: {std_r:.1f}")
+    print(f"Min/Max Returns: {min(returns):.0f} / {max(returns):.0f}")
+    if video_enabled:
+        print(f"Saved video to results/ folder!")
 
     return {
-        "avg_return": avg_return,
-        "std_return": std_return,
-        "action_distribution": dict(action_counts),
+        "avg_return": float(mean_r),
+        "std_return": float(std_r),
+        "min_return": float(np.min(returns)),
+        "max_return": float(np.max(returns)),
+        "returns": [float(value) for value in returns],
     }
