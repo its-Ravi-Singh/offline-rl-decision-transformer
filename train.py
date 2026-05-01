@@ -28,6 +28,7 @@ def train(
     dataloader,
     epochs=50,
     plot_path="plots/training_loss.png",
+    plot_title=None,
     early_stopping_patience=None,
     min_delta=1e-4,
     log_every=10,
@@ -117,7 +118,9 @@ def train(
     plt.plot(losses)
     plt.xlabel("Epoch")
     plt.ylabel("Action MSE")
-    plt.title("Decision Transformer Training Loss")
+    if plot_title is None:
+        plot_title = f"{model.__class__.__name__} Training Loss"
+    plt.title(plot_title)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(plot_path, dpi=150)

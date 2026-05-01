@@ -84,6 +84,7 @@ def make_dataset(buffer, model_key):
 
 def run_model(split_label, buffer, model_key):
     spec = MODELS[model_key]
+    nice_split = split_label.title()
     dataset = make_dataset(buffer, model_key)
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
@@ -99,6 +100,7 @@ def run_model(split_label, buffer, model_key):
         loader,
         epochs=EPOCHS,
         plot_path=os.path.join(OUT_DIR, f"loss_{safe_name}.png"),
+        plot_title=f"{spec['display']} Training Loss - {nice_split}",
         log_every=max(EPOCHS // 5, 1),
     )
     metrics = evaluate(
