@@ -60,23 +60,39 @@ def predict_action(target_rtg, *state_vals):
 
 
 def run_hopper_episode(target_rtg_val):
+    # run in a subprocess because macOS crashes if mujoco renders in a background thread
+    import subprocess
+    import sys
     os.makedirs(VIDEO_DIR, exist_ok=True)
-
-    # delete old videos first so we dont serve stale ones
     for f in glob.glob(os.path.join(VIDEO_DIR, "*.mp4")):
         os.remove(f)
 
+    # call this exact file but with a special CLI flag
+    subprocess.run([sys.executable, __file__, "record_video", str(target_rtg_val)])
+
+    videos = sorted(glob.glob(os.path.join(VIDEO_DIR, "*.mp4")))
+    video_path = videos[0] if videos else None
+    
+    # read summary
+    try:
+        with open("demo_videos/summary.txt", "r") as f:
+            summary = f.read().strip()
+    except:
+        summary = "Done! (see video)"
+
+    return video_path, summary
+
+def _record_video_subprocess(target_rtg_val):
     env = gym.make("Hopper-v4", render_mode="rgb_array")
     env = gym.wrappers.RecordVideo(
-        env,
-        video_folder=VIDEO_DIR,
+        env, video_folder=VIDEO_DIR,
         episode_trigger=lambda ep: ep == 0,
         disable_logger=True,
     )
 
     obs, _ = env.reset()
     ep_reward = 0.0
-    rtg = float(target_rtg_val) / TARGET_RTG  # normalize the same way as training
+    rtg = float(target_rtg_val) / TARGET_RTG
     state_hist = [obs.astype(np.float32)]
     action_hist = [np.zeros(ACT_DIM, dtype=np.float32)]
     rtg_hist = [rtg]
@@ -85,13 +101,8 @@ def run_hopper_episode(target_rtg_val):
     while not done:
         with torch.no_grad():
             try:
-                a = model.act(
-                    obs.astype(np.float32),
-                    target_rtg=rtg,
-                    state_history=state_hist,
-                    action_history=action_hist,
-                    rtg_history=rtg_hist,
-                )
+                a = model.act(obs.astype(np.float32), target_rtg=rtg,
+                              state_history=state_hist, action_history=action_hist, rtg_history=rtg_hist)
             except TypeError:
                 a = model.act(obs.astype(np.float32), target_rtg=rtg)
 
@@ -105,11 +116,9 @@ def run_hopper_episode(target_rtg_val):
         done = term or trunc
 
     env.close()
-
-    videos = sorted(glob.glob(os.path.join(VIDEO_DIR, "*.mp4")))
-    video_path = videos[0] if videos else None
-    summary = f"done! total return: {ep_reward:.1f}"
-    return video_path, summary
+    
+    with open("demo_videos/summary.txt", "w") as f:
+        f.write(f"done! total return: {ep_reward:.1f}")
 
 
 # build the UI
@@ -144,4 +153,8 @@ with gr.Blocks(title="DT Hopper Demo", theme=gr.themes.Soft()) as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=8000)
+    import sys
+    if len(sys.argv) > 2 and sys.argv[1] == "record_video":
+        _record_video_subprocess(float(sys.argv[2]))
+    else:
+        demo.launch(server_name="0.0.0.0", server_port=8000)
