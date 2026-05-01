@@ -5,6 +5,8 @@ import os
 import numpy as np
 import torch
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, model_validator
 
 from models.decision_transformer import DecisionTransformer
@@ -74,6 +76,12 @@ def load_policy():
 
 app = FastAPI(title="Decision Transformer Hopper Policy")
 model, device = load_policy()
+
+app.mount("/ui", StaticFiles(directory="static", html=True), name="ui")
+
+@app.get("/")
+def root():
+    return RedirectResponse(url="/ui")
 
 
 @app.get("/health")
