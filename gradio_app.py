@@ -129,7 +129,7 @@ with gr.Blocks(title="DT Hopper Demo", theme=gr.themes.Soft()) as demo:
                     predict_btn = gr.Button("Get Action", variant="primary")
                 with gr.Column():
                     action_output = gr.Textbox(label="Output", lines=6)
-            predict_btn.click(fn=predict_action, inputs=[rtg_input] + state_inputs, outputs=action_output)
+            predict_btn.click(fn=predict_action, inputs=[rtg_input] + state_inputs, outputs=action_output, api_name=False)
 
         with gr.Tab("Run Hopper Episode"):
             gr.Markdown("Runs a full episode and records video. Takes a few seconds.")
@@ -140,7 +140,7 @@ with gr.Blocks(title="DT Hopper Demo", theme=gr.themes.Soft()) as demo:
                     episode_out = gr.Textbox(label="Result", lines=2)
                 with gr.Column():
                     video_out = gr.Video(label="Episode Video")
-            run_btn.click(fn=run_hopper_episode, inputs=[rtg_slider], outputs=[video_out, episode_out])
+            run_btn.click(fn=run_hopper_episode, inputs=[rtg_slider], outputs=[video_out, episode_out], api_name=False)
 
 
 if __name__ == "__main__":
