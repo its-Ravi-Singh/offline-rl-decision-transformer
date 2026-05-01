@@ -1,5 +1,8 @@
 # CSE 676 Final Project — Gradient Gone Wild
 # Hemanth Phani Srinivas Chilamkurthy, Ravi Rajaram Singh
+#
+# main training script for the decision transformer
+# runs on hopper by default but can be changed via env vars
 
 import os
 
@@ -29,10 +32,11 @@ MODEL_FILE = "saved_models/decision_transformer_d4rl.pth"
 
 
 def load_minari_data(ds_id):
-    print(f"Loading {ds_id} data...")
+    print(f"loading dataset: {ds_id}")
     try:
         mds = minari.load_dataset(ds_id, download=True)
     except Exception:
+        # sometimes the above fails first time, downloading manually fixes it
         mds = minari.download_dataset(ds_id)
         mds = minari.load_dataset(ds_id)
     return mds
@@ -42,11 +46,8 @@ def main():
 
     mds = load_minari_data(DATASET_ID)
     buffer = MinariTrajectoryBuffer(mds, target_rtg=TARGET_RTG)
-    print(
-        "Loaded offline benchmark: "
-        f"{DATASET_ID}, episodes={len(buffer)}, steps={buffer.num_steps}, "
-        f"returns={buffer.return_stats}"
-    )
+    print(f"episodes: {len(buffer)}, steps: {buffer.num_steps}, returns: {buffer.return_stats}")
+
     ds = SequenceTrajectoryDataset(
         buffer,
         context_len=CONTEXT_LEN,
@@ -55,19 +56,17 @@ def main():
     )
     loader = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=True)
 
-
+    # TODO: maybe try different hidden dims later
     model = DecisionTransformer(
         state_dim=buffer.state_dim,
         act_dim=buffer.act_dim,
         context_len=CONTEXT_LEN,
     )
 
-
-    print("Starting training...")
+    print("starting training...")
     loss_history = train(model, loader, epochs=EPOCHS)
 
-
-    print("Testing the model...")
+    print("evaluating...")
     results = evaluate(
         model,
         env_name=ENV_NAME,
@@ -76,12 +75,12 @@ def main():
         record_video=RECORD_VIDEO,
     )
 
-
     os.makedirs("saved_models", exist_ok=True)
     save_model(model, MODEL_FILE)
+    print(f"saved to {MODEL_FILE}")
 
-    print(f"\nFinal Loss: {loss_history[-1]:.4f}")
-    print(f"Average Return: {results['avg_return']:.1f}")
+    print(f"\nfinal loss: {loss_history[-1]:.4f}")
+    print(f"avg return: {results['avg_return']:.1f}")
 
 
 if __name__ == "__main__":

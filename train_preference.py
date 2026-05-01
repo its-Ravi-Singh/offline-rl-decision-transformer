@@ -1,3 +1,6 @@
+# train the preference model on segment pairs
+# generates pairs from offline data and trains a bradley-terry style model
+
 import argparse
 import os
 
@@ -36,6 +39,7 @@ def load_minari_data(ds_id):
 def train_preference_model(model, train_loader, val_loader, epochs, out_dir):
     device = get_device()
     model.to(device)
+    # used same lr as the policy models, seemed to work ok
     opt = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
     loss_fn = nn.CrossEntropyLoss()
     history = {"train_loss": [], "val_acc": []}
@@ -61,6 +65,7 @@ def train_preference_model(model, train_loader, val_loader, epochs, out_dir):
         history["val_acc"].append(val_acc)
         if val_acc > best_acc:
             best_acc = val_acc
+            # keep a copy of the best weights
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         print(
             f"epoch {epoch + 1}/{epochs} "
@@ -135,6 +140,7 @@ def main():
     print(f"Saved preference pairs to {pair_path}")
 
     dataset = PreferencePairDataset(pairs)
+    # 80/20 split
     val_size = max(int(0.2 * len(dataset)), 1)
     train_size = len(dataset) - val_size
     train_ds, val_ds = random_split(
