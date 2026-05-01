@@ -3,5 +3,4 @@ gymnasium[mujoco]
 numpy
 matplotlib
 minari[hf,hdf5]
-fastapi
-uvicorn[standard]
+gradio

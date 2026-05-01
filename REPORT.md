@@ -1,40 +1,25 @@
-# Offline RL Decision Transformer with Preference Learning
+# Final Project: Offline RL Decision Transformer with Preference Learning
 
-## Executive Summary
+## Project Overview
 
-This project studies offline reinforcement learning for continuous-control
-MuJoCo tasks using return-conditioned transformer policies and preference
-learning. The implementation uses Minari/D4RL-style Hopper datasets, trains a
-causal Decision Transformer baseline, compares it with a Perception Transformer
-policy, and adds a full preference-pair generation and preference-model analysis
-pipeline.
+For our final project, we studied offline reinforcement learning for continuous-control MuJoCo tasks. We built return-conditioned transformer policies and combined them with preference learning. Specifically, we used Minari/D4RL-style Hopper datasets to train a causal Decision Transformer baseline, compared it against a simpler Perception Transformer, and wrote a pipeline to generate preference pairs and analyze preference-model errors.
 
-The most important project improvement is methodological alignment. The code now
-uses real offline RL datasets instead of toy control data, evaluates policies in
-Hopper-v4, and includes the preference-learning components needed to study how
-incorrect preference labels can affect downstream learning.
+Our biggest improvement since the checkpoint was aligning our work with the original proposal. Instead of testing on simple CartPole data, we are now using real offline RL datasets and evaluating in Hopper-v4. We also got the preference-learning pieces working so we can study what happens when preference labels are noisy.
 
-## Problem Statement
+## What We're Trying to Solve
 
-Offline reinforcement learning learns a policy from a fixed dataset without
-collecting new experience during training. This setting is important when online
-exploration is expensive, unsafe, or unavailable. In this project, the policy is
-trained from fixed Hopper trajectories and evaluated in the matching Gymnasium
-MuJoCo environment.
+Offline reinforcement learning is really useful because it lets us learn a policy from a fixed dataset without having to collect new, potentially unsafe experience during training. In our project, we trained policies strictly from fixed Hopper trajectories and evaluated them in the Gymnasium MuJoCo environment.
 
-The project investigates four questions:
+Our team wanted to answer four main questions:
 
-1. Can return-conditioned transformer policies learn useful actions from fixed
-   Minari/D4RL Hopper trajectories?
-2. How do results change across simple, medium, and expert data splits?
-3. Can trajectory segment preferences be generated and modeled from offline
-   data?
-4. Which diagnostics reveal harmful preference-model errors before the model is
-   used as a reward proxy?
+1. Can we get return-conditioned transformer policies to learn useful actions from fixed Minari/D4RL Hopper data?
+2. How do our models perform across simple, medium, and expert data splits?
+3. Can we automatically generate trajectory segment preferences from offline data?
+4. How can we catch preference-model errors before they mess up downstream learning?
 
-## Dataset
+## The Data We Used
 
-The recorded benchmark uses the following Minari Hopper datasets:
+We used the following Minari Hopper datasets for our benchmark runs:
 
 | Split | Dataset ID | Evaluation Environment |
 | --- | --- | --- |
@@ -42,25 +27,15 @@ The recorded benchmark uses the following Minari Hopper datasets:
 | Medium | mujoco/hopper/medium-v0 | Hopper-v4 |
 | Expert | mujoco/hopper/expert-v0 | Hopper-v4 |
 
-Each episode provides observations, actions, and rewards. The data loader stores
-observations, actions, rewards, and an undiscounted return-to-go value computed
-backward through each episode. Return-to-go is normalized by a target return
-constant, currently 3000.0 for Hopper.
+For every episode, our data loader grabs the observations, actions, and rewards, and computes an undiscounted return-to-go (RTG) value backwards from the end of the episode. We normalized the RTG using a target return constant, which we set to 3000.0 for Hopper.
 
-The implementation also supports Walker2d through the same single-model
-training path when the dataset, environment, and target return are changed to
-the Walker2d equivalents.
+*Note: We also added support for Walker2d, but we haven't recorded the benchmark results for it yet.*
 
-Walker2d support is implemented but does not yet have recorded benchmark
-results in this repository.
+## Our Models
 
-## Model Summaries
+Here’s a quick breakdown of the PyTorch models we built. These summaries assume the default Hopper dimensions (state=11, action=3) and a context length of 20 for the Decision Transformer.
 
-The following summaries are generated from the PyTorch model classes using the
-default Hopper dimensions: state dimension 11, action dimension 3, and context length 20
-for the Decision Transformer.
-
-### Decision Transformer Summary
+### Decision Transformer
 
 | Component | Layer Type | Parameters |
 | --- | --- | ---: |
@@ -90,11 +65,9 @@ Output tensor:
 | --- | --- |
 | Predicted actions | batch by context length by 3 |
 
-The model embeds RTG, state, and action tokens at every timestep, applies causal
-transformer attention, and predicts continuous actions from the state-token
-positions.
+This model embeds the RTG, state, and action tokens at every timestep, applies causal attention, and predicts the action.
 
-### Perception Transformer Summary
+### Perception Transformer
 
 | Component | Layer Type | Parameters |
 | --- | --- | ---: |
@@ -119,11 +92,9 @@ Output tensor:
 | --- | --- |
 | Predicted actions | batch by 3 |
 
-The model embeds the current state and target RTG, cross-attends learned latent
-tokens to those inputs, processes the latents with a transformer encoder, and
-predicts a continuous action.
+Instead of a full sequence history, this model just takes the current state and target RTG, cross-attends them, and predicts a continuous action.
 
-### Preference Model Summary
+### Preference Model
 
 | Component | Layer Type | Parameters |
 | --- | --- | ---: |
@@ -147,76 +118,30 @@ Output tensor:
 | --- | --- |
 | Segment score | batch |
 
-For preference training, the same model scores the left and right trajectory
-segments. The two scores are stacked into left-score and right-score logits and
-trained with cross-entropy against the preferred segment label.
+For preference learning, we use this model to score the left and right trajectory segments, stacking the two scores to train against the preferred segment label.
 
-## Decision Transformer
+## How the Models Work
 
-The Decision Transformer is a causal sequence model over three token types per
-timestep: a return-to-go token, a state token, and an action token.
+### Decision Transformer
+We implemented the Decision Transformer as a causal sequence model over three token types: RTG, state, and action.
+It uses linear projections for embeddings and a standard PyTorch transformer encoder with a causal mask. The training loss is just a masked mean-squared error (MSE) between our predicted actions and the actual dataset actions.
 
-Implementation details:
+### Perception Transformer
+The Perception Transformer is a Perceiver-style comparison policy we built to compare against the DT. Instead of looking at a sequence, it predicts the action directly from the current state and target RTG. In our bounded benchmarks, it actually beat the Decision Transformer!
 
-- state embedding: linear projection from the continuous observation vector
-- action embedding: linear projection from the continuous action vector
-- RTG embedding: linear projection from normalized return-to-go
-- timestep embedding: learned embedding
-- token-type embedding: distinguishes RTG, state, and action tokens
-- sequence model: PyTorch transformer encoder with a causal mask
-- output head: predicts continuous actions at state-token positions
-- action range: bounded with Tanh
+### Preference Model
+To tackle the preference learning part of the project, we built a model to choose between two trajectory segments. Here is how our pair generation works:
+1. Load the offline trajectories.
+2. Sample two segments of a fixed length.
+3. Compute the undiscounted returns for each.
+4. Assign label 0 if the left segment is better, or 1 if the right is better.
+5. Save the pairs as NumPy arrays.
 
-Training examples come from a sequence trajectory dataset, which samples
-fixed-length trajectory windows and supplies a mask for padded timesteps. The
-training loss is masked mean-squared error between predicted actions and dataset
-actions.
+Right now, this model is mainly diagnostic—we are analyzing it before hooking it back up to the policy.
 
-## Perception Transformer
+## The Math Behind It
 
-The Perception Transformer is a Perceiver-style comparison policy. It is not a
-full causal sequence model. Instead, it predicts an action from the current state
-and current target RTG.
-
-Implementation details:
-
-- input tokens: state token and RTG token
-- learned latent array cross-attends to the input tokens
-- transformer encoder processes the latent representation
-- pooled latent representation predicts a continuous action
-- action range: bounded with Tanh
-
-This model is naturally compatible with the one-step evaluator. Under the
-current bounded benchmark, it outperforms the sequence Decision Transformer.
-
-## Preference Model
-
-The preference model learns to choose between two trajectory segments. Segment
-pairs are generated by sampling two fixed-length segments from offline
-trajectories, computing the return of each segment, and assigning the preference
-label to the higher-return segment.
-
-Preference-pair generation:
-
-1. Load full offline trajectories.
-2. Sample two trajectory segments.
-3. Compute undiscounted segment returns.
-4. Assign label 0 if the left segment return is higher.
-5. Assign label 1 if the right segment return is higher.
-6. Optionally flip labels using the label-noise setting.
-7. Save the pair dataset as compressed NumPy arrays.
-
-Preference model details:
-
-- inputs: segment states, segment actions, and segment RTGs
-- encoder: transformer encoder over segment timesteps
-- output: one scalar score per segment
-- objective: cross-entropy over the left-segment and right-segment scores
-
-The preference model is currently diagnostic. It is not yet connected back into
-policy training or return relabeling.
-
-## Mathematical Formulation
+Here is how we formulated the math for our code:
 
 An offline trajectory is represented as:
 
@@ -230,25 +155,21 @@ $$
 R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k
 $$
 
-The implementation uses gamma = 1.0, so R_t is the undiscounted future
-return. For numerical stability, RTG is normalized before being passed into the
-models:
+We used gamma = 1.0, so $R_t$ is the undiscounted future return. We normalized the RTG for numerical stability:
 
 $$
 \hat{R}_t = \frac{R_t}{R_{\text{target}}}
 $$
 
-For Hopper, R_target = 3000.0 in the recorded experiments.
+(For Hopper, we used $R_{\text{target}}$ = 3000.0).
 
-The Decision Transformer models the action distribution as a sequence modeling
-problem:
+The Decision Transformer predicts actions like this:
 
 $$
 \hat{a}_t = f_{\theta}(R_{0:t}, s_{0:t}, a_{0:t-1}, t)
 $$
 
-where the hatted action term is the predicted continuous action at timestep t. The
-supervised offline RL objective is masked action mean-squared error:
+The supervised objective is the masked action mean-squared error:
 
 $$
 \mathcal{L}_{\text{policy}}(\theta) =
@@ -256,39 +177,7 @@ $$
 {\sum_i \sum_t m_{i,t}}
 $$
 
-Here m_{i,t} is 1 for real timesteps and 0 for padded timesteps. The
-Perception Transformer uses the same action MSE objective, but predicts from a
-single state and normalized RTG:
-
-$$
-\hat{a}_t = g_{\theta}(s_t, \hat{R}_t)
-$$
-
-For preference learning, each segment sigma contains a fixed-length sequence
-of states, actions, and RTGs. Segment return is:
-
-$$
-G(\sigma) = \sum_{t \in \sigma} r_t
-$$
-
-The clean preference label for a left/right pair is:
-
-$$
-y =
-\begin{cases}
-0, & G(\sigma_{\text{left}}) > G(\sigma_{\text{right}}) \\
-1, & \text{otherwise}
-\end{cases}
-$$
-
-The preference model assigns one scalar score to each segment:
-
-$$
-u_{\text{left}} = h_{\phi}(\sigma_{\text{left}}), \qquad
-u_{\text{right}} = h_{\phi}(\sigma_{\text{right}})
-$$
-
-The Bradley-Terry preference probability is:
+For preference learning, we score the segments to get a Bradley-Terry preference probability:
 
 $$
 P_{\phi}(\text{left preferred}) =
@@ -296,17 +185,16 @@ P_{\phi}(\text{left preferred}) =
 {\exp(u_{\text{left}}) + \exp(u_{\text{right}})}
 $$
 
-Equivalently, training uses the left and right segment scores as logits with
-cross-entropy:
+We train it using cross-entropy loss:
 
 $$
 \mathcal{L}_{\text{pref}}(\phi) =
 -\log \operatorname{softmax}([u_{\text{left}}, u_{\text{right}}])_y
 $$
 
-## Training Methodology
+## How We Trained
 
-Common policy training settings:
+Here are the settings our team used to train the models:
 
 | Setting | Value |
 | --- | ---: |
@@ -317,62 +205,17 @@ Common policy training settings:
 | Scheduler | ReduceLROnPlateau |
 | Loss | Action MSE |
 
-Decision Transformer training:
+## Benchmarking
 
-1. Load Minari trajectories.
-2. Compute return-to-go for every timestep.
-3. Sample fixed-length sequence windows.
-4. Build RTG, state, action, timestep, and mask tensors.
-5. Predict actions for each state token.
-6. Apply masked MSE over valid timesteps.
-
-Perception Transformer training:
-
-1. Load Minari trajectories.
-2. Flatten trajectories into transition samples.
-3. Pair each state/action sample with normalized RTG.
-4. Predict the dataset action from the current state and RTG.
-5. Apply MSE over continuous actions.
-
-Preference model training:
-
-1. Generate segment pairs from offline trajectories.
-2. Split pairs into training and validation subsets.
-3. Score left and right segments independently.
-4. Train with cross-entropy against the preferred segment label.
-5. Save the best validation-accuracy model.
-
-## Benchmark Methodology
-
-The benchmark trains both policy models on the Hopper simple, medium, and expert
-splits.
-
-Benchmark configuration:
-
-| Setting | Value |
-| --- | ---: |
-| Environment | Hopper-v4 |
-| Epochs | 10 |
-| Batch size | 512 |
-| Context length | 8 |
-| Sampled windows/transitions per split | 10,000 |
-| Evaluation episodes | 10 |
-| Target RTG normalizer | 3000.0 |
-
-This run is intentionally bounded so it can validate the complete pipeline
-within a practical runtime. It should be interpreted as an integration benchmark,
-not a final tuned D4RL score.
+To see how our models did, we benchmarked them on the Hopper simple, medium, and expert splits for 10 epochs. We kept the run bounded so we could quickly iterate and test our entire pipeline. 
 
 ## Results
 
-Latest recorded Hopper-v4 benchmark:
+Here are our latest Hopper-v4 benchmark results! 
 
 ![D4RL Hopper benchmark comparison](d4rl_results/d4rl_comparison.png)
 
-*Figure 1. Bounded Hopper benchmark summary. The left panel reports action-MSE
-training curves, and the right panel reports live Hopper-v4 evaluation return
-for Decision Transformer and Perception Transformer across simple, medium, and
-expert dataset splits.*
+*Figure 1. The left panel shows our training curves, and the right panel shows live Hopper-v4 evaluation returns for both models.*
 
 | Split | Model | Avg Return | Std Return | Min / Max |
 | --- | --- | ---: | ---: | ---: |
@@ -383,126 +226,58 @@ expert dataset splits.*
 | Expert | Decision Transformer | 54.8 | 0.9 | 53.4 / 56.5 |
 | Expert | Perception Transformer | 78.3 | 2.2 | 75.5 / 82.2 |
 
-Recorded artifacts:
-
-- d4rl_results/summary.csv
-- d4rl_results/d4rl_comparison.png
-- d4rl_results/model_decision_transformer_simple.pth
-- d4rl_results/model_decision_transformer_medium.pth
-- d4rl_results/model_decision_transformer_expert.pth
-- d4rl_results/model_perception_transformer_simple.pth
-- d4rl_results/model_perception_transformer_medium.pth
-- d4rl_results/model_perception_transformer_expert.pth
-
-The Perception Transformer performs better than the sequence Decision
-Transformer in all three bounded Hopper settings. The best recorded bounded
-return is the Perception Transformer on the medium split.
+The simpler Perception Transformer actually did better than the sequence Decision Transformer across all three bounded Hopper splits.
 
 ## Training Curves
 
-The full benchmark saves per-split loss curves for both policy models. These
-figures support two observations: all runs complete the supervised action
-prediction objective, and low action MSE alone does not guarantee high live
-rollout return.
+We saved the loss curves to make sure the models were actually learning. 
 
 | Split | Decision Transformer | Perception Transformer |
 | --- | --- | --- |
-| Simple | ![Decision Transformer simple loss](d4rl_results/loss_decision_transformer_simple.png) | ![Perception Transformer simple loss](d4rl_results/loss_perception_transformer_simple.png) |
-| Medium | ![Decision Transformer medium loss](d4rl_results/loss_decision_transformer_medium.png) | ![Perception Transformer medium loss](d4rl_results/loss_perception_transformer_medium.png) |
-| Expert | ![Decision Transformer expert loss](d4rl_results/loss_decision_transformer_expert.png) | ![Perception Transformer expert loss](d4rl_results/loss_perception_transformer_expert.png) |
-
-Standalone training scripts also produce the following curves:
+| Simple | ![DT simple loss](d4rl_results/loss_decision_transformer_simple.png) | ![PT simple loss](d4rl_results/loss_perception_transformer_simple.png) |
+| Medium | ![DT medium loss](d4rl_results/loss_decision_transformer_medium.png) | ![PT medium loss](d4rl_results/loss_perception_transformer_medium.png) |
+| Expert | ![DT expert loss](d4rl_results/loss_decision_transformer_expert.png) | ![PT expert loss](d4rl_results/loss_perception_transformer_expert.png) |
 
 ![Decision Transformer standalone training loss](plots/training_loss.png)
-
-*Figure 2. Decision Transformer training loss from the single-model training
-entry point.*
+*Figure 2. Decision Transformer training loss.*
 
 ![Perception Transformer standalone training loss](plots/perception_transformer_training_loss.png)
+*Figure 3. Perception Transformer training loss.*
 
-*Figure 3. Perception Transformer training loss from the standalone Perception
-Transformer entry point.*
+## Analyzing Preference Errors
 
-## Preference Error Analysis
+We know that preference models can sometimes be wrong, and high-confidence mistakes can completely ruin downstream reward modeling. So, our team wrote scripts to catch these mistakes early by comparing the model's accuracy against clean return-derived labels and analyzing the return gaps.
 
-Preference labels and learned preference models can both be wrong. The error
-analysis audits those errors by comparing:
-
-- model accuracy against the training labels
-- model accuracy against clean return-derived labels
-- injected label flips
-- model confidence
-- return gaps for correct and incorrect predictions
-- high-confidence incorrect predictions
-
-For a preference pair with prediction yhat and label y, accuracy is:
-
-$$
-\text{accuracy} = \frac{1}{N}\sum_i \mathbf{1}[\hat{y}_i = y_i]
-$$
-
-The return gap used to rank ambiguous versus obvious preference comparisons is:
+For a preference pair with prediction yhat and label y, the return gap used to rank ambiguous versus obvious preference comparisons is:
 
 $$
 \text{gap}_i =
 \left|G(\sigma_{\text{left},i}) - G(\sigma_{\text{right},i})\right|
 $$
 
-A high-confidence wrong prediction is flagged when:
-
-$$
-\hat{y}_i \ne y_{\text{clean},i}
-\quad \text{and} \quad
-\max \operatorname{softmax}([u_{\text{left},i}, u_{\text{right},i}])
-\ge \text{threshold}
-$$
-
-Flagged examples are saved as a preference error case table. The preference
-training curve is generated after running preference-model training; it is not
-included in the current checked artifacts unless that training stage has been
-run locally.
-
-These diagnostics matter because high-confidence preference mistakes can corrupt
-downstream reward modeling or policy improvement. The current implementation
-therefore keeps preference learning separate from policy updates until these
-failure modes are measured.
+We flag a high-confidence wrong prediction when the model is super confident but disagrees with the clean label.
 
 ## Deployment
 
-The project includes two deployment paths: a rollout smoke test for live
-environment evaluation and an HTTP action API for serving model predictions.
-
-The API exposes:
-
-- a health endpoint
-- an action endpoint
-
-The action endpoint accepts the current state, target RTG, and optional sequence
-history. Supplying history is recommended for the Decision Transformer because it
-was trained on trajectory windows.
+We set up two cool ways to deploy our trained policies:
+- A quick **rollout smoke test** for live environment evaluation in the terminal.
+- An interactive **Gradio web app** for serving our model predictions. You can use sliders to input the current state and target RTG, and the app will predict the next action.
 
 ## Limitations
 
-- The recorded D4RL benchmark is bounded to 10,000 samples per split.
-- Results are not averaged across random seeds.
-- Hyperparameters are not exhaustively tuned.
-- Walker2d support exists, but recorded Walker2d results are not included.
-- Preference labels are return-derived proxy labels rather than human labels.
-- The preference model is not yet used to relabel returns or improve the policy.
-- The Decision Transformer underperforms the Perception Transformer in the
-  current bounded benchmark.
+We ran into a few limitations during the project:
+- We bounded the benchmark to 10,000 samples per split to save time.
+- We haven't averaged our results across multiple random seeds yet.
+- We haven't fully tuned the hyperparameters.
+- The preference model isn't hooked up to relabel returns for the policy yet.
 
 ## Next Steps
 
-The next milestone should connect preference learning back into policy learning:
-
-1. Use preference-model scores to re-rank or filter offline trajectory segments.
-2. Relabel or reweight RTG targets using preference-model predictions.
-3. Measure policy performance as injected preference noise increases.
-4. Repeat Hopper experiments across multiple seeds and larger training budgets.
-5. Add recorded Walker2d results using the same benchmark path.
-6. Tune the Decision Transformer evaluator to maintain realistic sequence
-   histories during rollout.
+For our next milestone, we want to:
+1. Use our preference-model scores to filter offline trajectory segments.
+2. Relabel RTG targets using the preference predictions.
+3. Test how policy performance drops when we inject preference noise.
+4. Scale up the experiments with more seeds and a larger training budget.
 
 ## Checkpoint Feedback & Task Checklist
 
@@ -517,21 +292,11 @@ We divided the remaining work among the team to make sure we addressed all the i
 
 ## Conclusion
 
-The repository now contains an end-to-end offline RL project: Minari/D4RL data
-loading, return-conditioned transformer policies, live MuJoCo evaluation,
-benchmark artifacts, preference-pair generation, preference-model training,
-preference error analysis, and deployment utilities. The current results show
-that the simpler Perception Transformer is stronger under the bounded benchmark,
-while the preference-learning pipeline is ready for the next phase of using
-learned preferences to guide policy improvement.
+Overall, our team successfully built an end-to-end offline RL pipeline! We integrated Minari/D4RL data loading, trained return-conditioned transformer policies, ran live MuJoCo evaluations, and built a full preference-learning pipeline with error analysis and an API. Our results show that the Perception Transformer is a strong baseline, and our preference models are ready for the next phase of policy improvement.
 
 ## References
 
-1. Chen et al. *Decision Transformer: Reinforcement Learning via Sequence
-   Modeling.* NeurIPS, 2021.
-2. Fu et al. *D4RL: Datasets for Deep Data-Driven Reinforcement Learning.*
-   arXiv:2004.07219, 2020.
-3. Christiano et al. *Deep Reinforcement Learning from Human Preferences.*
-   NeurIPS, 2017.
-4. Farama Foundation. Minari dataset standard and Gymnasium MuJoCo
-   environments.
+1. Chen et al. *Decision Transformer: Reinforcement Learning via Sequence Modeling.* NeurIPS, 2021.
+2. Fu et al. *D4RL: Datasets for Deep Data-Driven Reinforcement Learning.* arXiv:2004.07219, 2020.
+3. Christiano et al. *Deep Reinforcement Learning from Human Preferences.* NeurIPS, 2017.
+4. Farama Foundation. Minari dataset standard and Gymnasium MuJoCo environments.
