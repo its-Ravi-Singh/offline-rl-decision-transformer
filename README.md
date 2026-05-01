@@ -1,26 +1,17 @@
 # Offline RL Decision Transformer with Preference Learning
 
-Final project for CSE 676 Deep Learning by team **Gradient Gone Wild**.
+Final project for CSE 676 Deep Learning — Team **Gradient Gone Wild**.
 
-This repository implements an offline reinforcement learning pipeline for
-continuous-control MuJoCo tasks using Minari/D4RL-style datasets. The main
-implementation trains a causal Decision Transformer on Hopper trajectories, adds
-a Perception Transformer comparison policy, and includes a preference-learning
-pipeline for trajectory segment comparisons and error analysis.
+We built an offline RL pipeline for MuJoCo continuous control using Minari/D4RL datasets. The core idea was to train a Decision Transformer on Hopper trajectories and add a preference learning pipeline on top of it to study what happens when preference labels are noisy or wrong.
 
-## Project Scope
+## What We Did
 
-The project focuses on four goals:
+1. Trained return-conditioned transformer policies from fixed offline RL data (no online exploration).
+2. Compared performance across Hopper simple, medium, and expert datasets.
+3. Generated segment-level preference pairs from offline trajectories.
+4. Trained a preference model and analyzed its error patterns before using it as a reward proxy.
 
-1. Train return-conditioned transformer policies from fixed offline RL data.
-2. Compare performance across Hopper simple, medium, and expert datasets.
-3. Generate segment-level preference pairs from offline trajectories.
-4. Train and audit a preference model before using preferences as reward
-   feedback.
-
-The current codebase is aligned with the original offline RL proposal rather
-than a toy CartPole demonstration. Hopper-v4 is the recorded benchmark target,
-and Walker2d can be run through the same single-model path.
+We started with CartPole for prototyping but eventually moved everything to the real D4RL Hopper benchmark, which was one of the key pieces of feedback from the checkpoint.
 
 ## Repository Structure
 
@@ -28,30 +19,29 @@ and Walker2d can be run through the same single-model path.
 .
 |-- main.py                         # train/evaluate Decision Transformer on one dataset
 |-- d4rl_compare.py                 # benchmark DT and Perception Transformer on Hopper splits
-|-- train.py                        # shared supervised action training loop
+|-- train.py                        # shared training loop
 |-- evaluate.py                     # live Gymnasium MuJoCo evaluation
 |-- train_perception.py             # train Perception Transformer checkpoint
 |-- compare_models.py               # compare saved DT and Perception checkpoints
 |-- train_preference.py             # generate preference pairs and train preference model
-|-- analyze_preference_errors.py    # diagnose preference-label/model mistakes
-|-- deploy.py                       # rollout deployment smoke test
-|-- serve.py                        # FastAPI action service
+|-- analyze_preference_errors.py    # check where the preference model gets things wrong
+|-- deploy.py                       # rollout smoke test
+|-- gradio_app.py                   # Gradio web app for live model testing
 |-- data/
 |   `-- dataset.py                  # trajectory buffers, sequence windows, preference pairs
 |-- models/
 |   |-- decision_transformer.py     # causal sequence Decision Transformer
-|   |-- perception_transformer.py   # Perceiver-style RTG-conditioned policy
+|   |-- perception_transformer.py   # Perceiver-style policy (our comparison model)
 |   `-- preference_model.py         # Bradley-Terry segment preference model
-|-- d4rl_results/                   # recorded benchmark summaries, plots, checkpoints
+|-- d4rl_results/                   # benchmark plots, summaries, and checkpoints
 |-- saved_models/                   # deployable checkpoints
-|-- BENCHMARK_RESULTS.md            # concise benchmark table
-|-- DEPLOYMENT.md                   # rollout/API deployment notes
-`-- REPORT.md                       # project report
+|-- DEPLOYMENT.md                   # deployment notes
+`-- REPORT.md                       # full project report
 ```
 
 ## Setup
 
-Python 3.10+ is recommended.
+We used Python 3.10 for this project.
 
 ```bash
 python3 -m venv .venv
@@ -59,22 +49,16 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Required packages are listed in `requirements.txt`:
-
+Required packages:
 - PyTorch
 - Gymnasium with MuJoCo
-- Minari with Hugging Face/HDF5 support
-- NumPy
-- Matplotlib
-- FastAPI and Uvicorn
+- Minari (with HDF5/HuggingFace support)
+- NumPy, Matplotlib
+- Gradio (for the web demo)
 
-Minari datasets are downloaded automatically on first use. The scripts set local
-cache paths for Minari, Matplotlib, and font caches so generated files stay
-inside the project directory.
+Minari will auto-download the datasets on first use.
 
 ## Train the Decision Transformer
-
-Train the default Decision Transformer on Hopper expert data:
 
 ```bash
 python3 main.py
@@ -92,13 +76,13 @@ Default settings:
 | Target RTG normalizer | `3000.0` |
 | Output checkpoint | `saved_models/decision_transformer_d4rl.pth` |
 
-Useful overrides:
+You can override settings with environment variables:
 
 ```bash
-DATASET_ID=mujoco/hopper/medium-v0 EPOCHS=30 CONTEXT_LEN=20 python3 main.py
+DATASET_ID=mujoco/hopper/medium-v0 EPOCHS=30 python3 main.py
 ```
 
-Walker2d can be targeted with matching dataset and environment settings:
+Walker2d also works through the same path:
 
 ```bash
 DATASET_ID=mujoco/walker2d/medium-v0 ENV_NAME=Walker2d-v4 TARGET_RTG=5000 python3 main.py
@@ -106,42 +90,29 @@ DATASET_ID=mujoco/walker2d/medium-v0 ENV_NAME=Walker2d-v4 TARGET_RTG=5000 python
 
 ## Run the Hopper Benchmark
 
-Run the bounded benchmark configuration used for the recorded results:
+To reproduce our recorded results:
 
 ```bash
 EPOCHS=10 BATCH_SIZE=512 CONTEXT_LEN=8 N_EVAL=10 MAX_WINDOWS=10000 python3 d4rl_compare.py
 ```
 
-This trains both model families on Hopper simple, medium, and expert splits:
+This trains both models (Decision Transformer and Perception Transformer) on all three Hopper splits and saves results to `d4rl_results/`.
 
-- `DecisionTransformer`: causal sequence model over RTG/state/action tokens
-- `PerceptionTransformer`: Perceiver-style one-step policy conditioned on state
-  and target RTG
-
-Outputs are written to `d4rl_results/`:
-
-- `summary.csv`
-- `d4rl_comparison.png`
-- one training-loss plot per model/split
-- one checkpoint per model/split
-
-## Recorded Benchmark Results
+## Results
 
 Latest bounded Hopper-v4 benchmark:
 
 ![D4RL Hopper benchmark comparison](d4rl_results/d4rl_comparison.png)
 
-*Figure 1. Bounded Hopper benchmark summary showing training loss curves and
-evaluation returns for Decision Transformer and Perception Transformer across
-simple, medium, and expert splits.*
+*Figure 1. Training loss curves and evaluation returns for both models across the three Hopper splits.*
 
 | Setting | Value |
 | --- | ---: |
 | Epochs | 10 |
 | Batch size | 512 |
 | Context length | 8 |
-| Sampled windows/transitions per split | 10,000 |
-| Evaluation episodes | 10 |
+| Samples per split | 10,000 |
+| Eval episodes | 10 |
 | Target RTG normalizer | 3000.0 |
 
 | Split | Model | Avg Return | Std Return | Min / Max |
@@ -153,35 +124,25 @@ simple, medium, and expert splits.*
 | Expert | Decision Transformer | 54.8 | 0.9 | 53.4 / 56.5 |
 | Expert | Perception Transformer | 78.3 | 2.2 | 75.5 / 82.2 |
 
-These are bounded integration results, not final tuned D4RL scores. The
-configuration intentionally limits training samples so the full pipeline can be
-run within a practical project timeline.
+These are bounded integration results, not final tuned D4RL scores. We kept training short so the full pipeline could run in a reasonable amount of time.
 
 ## Training Curves
 
-The benchmark run saves one loss plot for each model and dataset split:
-
 | Split | Decision Transformer | Perception Transformer |
 | --- | --- | --- |
-| Simple | ![Decision Transformer simple loss](d4rl_results/loss_decision_transformer_simple.png) | ![Perception Transformer simple loss](d4rl_results/loss_perception_transformer_simple.png) |
-| Medium | ![Decision Transformer medium loss](d4rl_results/loss_decision_transformer_medium.png) | ![Perception Transformer medium loss](d4rl_results/loss_perception_transformer_medium.png) |
-| Expert | ![Decision Transformer expert loss](d4rl_results/loss_decision_transformer_expert.png) | ![Perception Transformer expert loss](d4rl_results/loss_perception_transformer_expert.png) |
-
-Single-checkpoint training scripts also save standalone curves:
+| Simple | ![DT simple loss](d4rl_results/loss_decision_transformer_simple.png) | ![PT simple loss](d4rl_results/loss_perception_transformer_simple.png) |
+| Medium | ![DT medium loss](d4rl_results/loss_decision_transformer_medium.png) | ![PT medium loss](d4rl_results/loss_perception_transformer_medium.png) |
+| Expert | ![DT expert loss](d4rl_results/loss_decision_transformer_expert.png) | ![PT expert loss](d4rl_results/loss_perception_transformer_expert.png) |
 
 ![Decision Transformer training loss](plots/training_loss.png)
-
-*Figure 2. Decision Transformer training loss from the single-model training
-path.*
+*Figure 2. DT training loss from the single-model run.*
 
 ![Perception Transformer training loss](plots/perception_transformer_training_loss.png)
-
-*Figure 3. Perception Transformer training loss from the standalone Perception
-Transformer training path.*
+*Figure 3. Perception Transformer training loss.*
 
 ## Preference Learning
 
-Generate trajectory-segment preference pairs and train a preference model:
+Generate preference pairs and train the preference model:
 
 ```bash
 python3 train_preference.py \
@@ -191,148 +152,60 @@ python3 train_preference.py \
   --epochs 20
 ```
 
-Preference-pair labels are return-derived:
+Labels are assigned based on which segment had a higher total return:
+- label `0`: left segment is better
+- label `1`: right segment is better
 
-- label `0`: left segment has higher return
-- label `1`: right segment has higher return
-
-Controlled noise can be injected for robustness experiments:
+You can also add some label noise to test robustness:
 
 ```bash
 python3 train_preference.py --label-noise 0.2 --num-pairs 10000
 ```
 
-The preference pipeline writes:
-
-- `preference_results/preference_pairs.npz`
-- `preference_results/preference_model.pth`
-- `preference_results/preference_training.png`
-
-When generated, the preference training curve can be embedded with:
-
-```markdown
-![Preference model training](preference_results/preference_training.png)
-```
+Outputs go to `preference_results/`.
 
 ## Preference Error Analysis
 
-After training a preference model, run:
+After training the preference model, run:
 
 ```bash
 python3 analyze_preference_errors.py
 ```
 
-The analysis compares predictions against noisy labels and clean return-derived
-labels, reports confidence/error patterns, and saves flagged cases to:
-
-```text
-preference_results/preference_error_cases.csv
-```
-
-This is intended to identify harmful preference-model errors before using a
-learned preference model as a reward proxy.
+This checks where the model was wrong, how confident it was when it made mistakes, and saves flagged error cases to `preference_results/preference_error_cases.csv`. We wanted to understand these failure modes before using the model as a reward signal.
 
 ## Deployment
 
-Run a rollout smoke test:
+Run a quick rollout to check the trained model:
 
 ```bash
 python3 deploy.py --no-video --episodes 1
 ```
 
-Start the local FastAPI action service:
+Launch the Gradio web demo to test the model interactively:
 
 ```bash
-MODEL_CHECKPOINT=saved_models/decision_transformer_d4rl.pth \
-uvicorn serve:app --host 127.0.0.1 --port 8000
+MODEL_CHECKPOINT=saved_models/decision_transformer_d4rl.pth python3 gradio_app.py
 ```
 
-See `DEPLOYMENT.md` for request examples and the latest recorded smoke-test
-output.
+Then open `http://127.0.0.1:8000` in your browser.
 
-## Generated Artifacts
-
-Expected generated artifacts include:
-
-- `saved_models/decision_transformer_d4rl.pth`
-- `saved_models/perception_transformer_d4rl.pth`
-- `plots/training_loss.png`
-- `plots/perception_transformer_training_loss.png`
-- `d4rl_results/d4rl_comparison.png`
-- `d4rl_results/loss_decision_transformer_simple.png`
-- `d4rl_results/loss_decision_transformer_medium.png`
-- `d4rl_results/loss_decision_transformer_expert.png`
-- `d4rl_results/loss_perception_transformer_simple.png`
-- `d4rl_results/loss_perception_transformer_medium.png`
-- `d4rl_results/loss_perception_transformer_expert.png`
-- `d4rl_results/summary.csv`
-- `model_comparison/summary.csv`
-- `model_comparison/decision_vs_perception.png`
-- `preference_results/preference_pairs.npz`
-- `preference_results/preference_model.pth`
-- `preference_results/preference_training.png`
-- `preference_results/preference_error_cases.csv`
-
-Large downloaded datasets, local virtual environments, Python bytecode, and
-temporary caches are excluded from version control.
-
-## Method Summary
-
-1. Load fixed Minari/D4RL MuJoCo trajectories.
-2. Compute undiscounted return-to-go for each timestep.
-3. Train a causal Decision Transformer on fixed-length trajectory windows.
-4. Train a Perception Transformer comparison policy on transition samples.
-5. Evaluate trained policies in live Gymnasium MuJoCo environments.
-6. Sample segment pairs from offline trajectories and label the higher-return
-   segment as preferred.
-7. Train a Bradley-Terry style preference model from segment comparisons.
-8. Analyze preference mistakes using label noise, clean-label disagreement,
-   confidence, and return gaps.
-
-## Key Formulas
-
-Return-to-go for timestep `t`:
-
-```text
-R_t = sum_{k=t}^{T} gamma^{k-t} r_k
-```
-
-The recorded Hopper runs use `gamma = 1.0` and normalize RTG as:
-
-```text
-rhat_t = R_t / R_target
-```
-
-Policy training uses masked action MSE:
-
-```text
-L_policy =
-    (sum_i sum_t m_{i,t} ||ahat_{i,t} - a_{i,t}||_2^2)
-    / (sum_i sum_t m_{i,t})
-```
-
-Preference learning scores two segments and applies Bradley-Terry comparison:
-
-```text
-P(left preferred) = exp(u_left) / (exp(u_left) + exp(u_right))
-L_pref = -log softmax([u_left, u_right])_y
-```
+See `DEPLOYMENT.md` for more details.
 
 ## Checkpoint Feedback & Task Checklist
 
-We divided the remaining work among the team to make sure we addressed all the instructor feedback from the checkpoint. Everything is now complete:
+We divided the work among the team to address all the instructor feedback from the checkpoint:
 
-- [x] **Dataset Migration:** Get the DT baseline working on the target D4RL benchmarks (Hopper) instead of the basic CartPole setup.
-- [x] **Data Pipeline:** Build the preference-pair generation pipeline from the offline trajectories.
+- [x] **Dataset Migration:** Get the DT baseline working on D4RL benchmarks (Hopper) instead of CartPole.
+- [x] **Data Pipeline:** Build the preference-pair generation pipeline from offline trajectories.
 - [x] **Preference Model:** Implement and train the preference model on the generated pairs.
-- [x] **Error Analysis:** Analyze what happens when the preference model makes mistakes and write a script to detect these errors.
-- [x] **Evaluation:** Benchmark the models, plot the training curves, and compare results.
-- [x] **Deployment:** Set up the FastAPI action service and rollout scripts.
+- [x] **Error Analysis:** Analyze what happens when the preference model makes mistakes.
+- [x] **Evaluation:** Benchmark the models, plot training curves, and compare results.
+- [x] **Deployment:** Set up the Gradio demo and rollout scripts.
 
 ## References
 
-- Chen et al., 2021. *Decision Transformer: Reinforcement Learning via Sequence
-  Modeling.*
+- Chen et al., 2021. *Decision Transformer: Reinforcement Learning via Sequence Modeling.*
 - Fu et al., 2020. *D4RL: Datasets for Deep Data-Driven Reinforcement Learning.*
 - Christiano et al., 2017. *Deep Reinforcement Learning from Human Preferences.*
-- Farama Foundation, Minari dataset standard and Gymnasium MuJoCo environments.
+- Farama Foundation, Minari and Gymnasium MuJoCo environments.
