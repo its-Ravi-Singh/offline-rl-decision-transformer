@@ -84,29 +84,6 @@ EPOCHS=10 BATCH_SIZE=512 CONTEXT_LEN=8 N_EVAL=10 MAX_WINDOWS=10000 python3 d4rl_
 
 Trains both models on all three Hopper splits and saves results to `d4rl_results/`.
 
-## Results
-
-![D4RL Hopper benchmark comparison](d4rl_results/d4rl_comparison.png)
-
-| Split | Model | Avg Return | Std Return | Min / Max |
-| --- | --- | ---: | ---: | ---: |
-| Simple | Decision Transformer | 18.9 | 0.2 | 18.6 / 19.3 |
-| Simple | Perception Transformer | 201.2 | 2.3 | 197.9 / 204.5 |
-| Medium | Decision Transformer | 23.1 | 0.8 | 21.7 / 24.9 |
-| Medium | Perception Transformer | 552.8 | 2.3 | 550.5 / 559.1 |
-| Expert | Decision Transformer | 54.8 | 0.9 | 53.4 / 56.5 |
-| Expert | Perception Transformer | 78.3 | 2.2 | 75.5 / 82.2 |
-
-*Note: These are bounded integration results, not final tuned D4RL numbers. We kept training short so the full pipeline would finish in reasonable time, and PT ended up doing better on Simple/Expert.*
-
-## Training Curves
-
-| Split | Decision Transformer | Perception Transformer |
-| --- | --- | --- |
-| Simple | ![DT simple](d4rl_results/loss_decision_transformer_simple.png) | ![PT simple](d4rl_results/loss_perception_transformer_simple.png) |
-| Medium | ![DT medium](d4rl_results/loss_decision_transformer_medium.png) | ![PT medium](d4rl_results/loss_perception_transformer_medium.png) |
-| Expert | ![DT expert](d4rl_results/loss_decision_transformer_expert.png) | ![PT expert](d4rl_results/loss_perception_transformer_expert.png) |
-
 ## Preference Learning
 
 ```bash
@@ -129,13 +106,7 @@ Checks where the model was wrong and how confident it was when it messed up. Sav
 
 ## Deployment
 
-Run a quick rollout:
-
-```bash
-python3 deploy.py --no-video --episodes 1
-```
-
-Launch the Gradio demo:
+Launch using Gradio:
 
 ```bash
 MODEL_CHECKPOINT=saved_models/decision_transformer_d4rl.pth python3 gradio_app.py

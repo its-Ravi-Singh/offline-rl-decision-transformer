@@ -123,8 +123,10 @@ Training curves:
 | Medium | ![](d4rl_results/loss_decision_transformer_medium.png) | ![](d4rl_results/loss_perception_transformer_medium.png) |
 | Expert | ![](d4rl_results/loss_decision_transformer_expert.png) | ![](d4rl_results/loss_perception_transformer_expert.png) |
 
-![DT standalone training loss](plots/training_loss.png)
+![DT standalone training loss](plots/decision_transformer_training_loss.png)
 *Figure 2 — DT training loss from the single-model run.*
+![PT standalone training loss](plots/perception_transformer_training_loss.png)
+*Figure 3 — PT training loss from the single-model run.*
 
 ---
 
