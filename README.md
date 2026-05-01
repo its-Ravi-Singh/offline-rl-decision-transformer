@@ -2,6 +2,9 @@
 
 Final project for CSE 676 Deep Learning — Team **Gradient Gone Wild**.
 
+**Team Members:** Ravi Singh, [Teammate Name]
+
+
 We built an offline RL pipeline for MuJoCo continuous control using Minari/D4RL datasets. The core idea was to train a Decision Transformer on Hopper trajectories and add a preference learning pipeline on top of it to study what happens when preference labels are noisy or wrong.
 
 ## What We Did

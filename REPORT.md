@@ -1,5 +1,9 @@
 # Final Project: Offline RL Decision Transformer with Preference Learning
 
+**CSE 676 Deep Learning | Team: Gradient Gone Wild**
+
+**Members:** Ravi Singh, [Teammate Name]
+
 ## Project Overview
 
 For our final project, we studied offline reinforcement learning for continuous-control MuJoCo tasks. We built return-conditioned transformer policies and combined them with preference learning. Specifically, we used Minari/D4RL-style Hopper datasets to train a causal Decision Transformer baseline, compared it against a simpler Perception Transformer, and wrote a pipeline to generate preference pairs and analyze preference-model errors.
