@@ -1,3 +1,6 @@
+# CSE 676 Final Project — Gradient Gone Wild
+# Hemanth Phani Srinivas Chilamkurthy, Ravi Rajaram Singh
+
 import os
 
 import matplotlib
