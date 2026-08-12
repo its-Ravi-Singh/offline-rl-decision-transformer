@@ -4,7 +4,7 @@
 
 **Team:** Gradient Gone Wild
 
-**Members:** Hemanth Phani Srinivas Chilamkurthy, Ravi Rajaram Singh
+**Members:** Ravi Rajaram Singh, Hemanth Phani Srinivas Chilamkurthy
 
 ---
 

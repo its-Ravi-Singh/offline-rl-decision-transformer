@@ -2,7 +2,7 @@
 
 **Deep Learning and Reinforcement Learning — Team Gradient Gone Wild**
 
-**Members:** Hemanth Phani Srinivas Chilamkurthy, Ravi Rajaram Singh
+**Members:** Ravi Rajaram Singh, Hemanth Phani Srinivas Chilamkurthy
 
 We built an offline RL pipeline for MuJoCo continuous control. The main idea was to train a Decision Transformer on Hopper trajectories and then add a preference learning pipeline to study what happens when preference labels are noisy or wrong.
 

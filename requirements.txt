@@ -4,3 +4,5 @@ numpy
 matplotlib
 minari[hf,hdf5]
 gradio
+imageio[ffmpeg]
+moviepy

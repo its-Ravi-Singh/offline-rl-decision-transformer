@@ -1,5 +1,5 @@
 # CSE 676 Final Project — Gradient Gone Wild
-# Hemanth Phani Srinivas Chilamkurthy, Ravi Rajaram Singh
+# Ravi Rajaram Singh, Hemanth Phani Srinivas Chilamkurthy
 #
 # shared training loop, used by main.py and d4rl_compare.py
 # works for both the decision transformer and perception transformer

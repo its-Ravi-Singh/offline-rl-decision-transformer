@@ -1,5 +1,5 @@
 # CSE 676 Final Project — Gradient Gone Wild
-# Hemanth Phani Srinivas Chilamkurthy, Ravi Rajaram Singh
+# Ravi Rajaram Singh, Hemanth Phani Srinivas Chilamkurthy
 #
 # main training script for the decision transformer
 # runs on hopper by default but can be changed via env vars

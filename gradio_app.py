@@ -1,27 +1,39 @@
 # CSE 676 Final Project
 # Team: Gradient Gone Wild
-# Members: Hemanth Phani Srinivas Chilamkurthy, Ravi Rajaram Singh
+# Members: Ravi Rajaram Singh, Hemanth Phani Srinivas Chilamkurthy
 #
-# gradio demo for testing our trained DT model
-# tab 1: predict action from state
-# tab 2: run a full hopper episode and record video
+# gradio demo
+# tab 1: predict action from a state
+# tab 2: run both models on the same episode and show the videos side by side
 
-import os
 import glob
-import torch
-import numpy as np
-import gymnasium as gym
+import json
+import os
+import subprocess
+import sys
+
 import gradio as gr
+import gymnasium as gym
+import imageio
+import numpy as np
+import torch
 
 from models.decision_transformer import DecisionTransformer
+from models.perception_transformer import PerceptionTransformer
 from utils.check import load_model
 
-CHECKPOINT = os.environ.get("MODEL_CHECKPOINT", "saved_models/decision_transformer_d4rl.pth")
+DT_CHECKPOINT = os.environ.get("MODEL_CHECKPOINT", "saved_models/decision_transformer_d4rl.pth")
+PT_CHECKPOINT = os.environ.get("PT_CHECKPOINT", "saved_models/perception_transformer_d4rl.pth")
 VIDEO_DIR = "demo_videos"
 STATE_DIM = 11   # hopper has 11 state dims
 ACT_DIM = 3      # and 3 action dims
 CONTEXT_LEN = 20
 TARGET_RTG = 3000.0
+
+# Hopper renders at 125 fps, so a 20 step episode written at native speed is a
+# 0.16 second file. We write the video ourselves and pick the frame rate.
+FPS_REAL = 30    # normal playback
+FPS_SLOW = 6     # for short episodes, so a fall is actually watchable
 
 
 def get_device():
@@ -32,21 +44,30 @@ def get_device():
     return torch.device("cpu")
 
 
-def load_policy():
+def load_policies():
     device = get_device()
-    model = DecisionTransformer(state_dim=STATE_DIM, act_dim=ACT_DIM, context_len=CONTEXT_LEN)
-    if os.path.exists(CHECKPOINT):
-        load_model(model, CHECKPOINT, map_location=device)
-        print(f"loaded checkpoint from {CHECKPOINT}")
+
+    dt = DecisionTransformer(state_dim=STATE_DIM, act_dim=ACT_DIM, context_len=CONTEXT_LEN)
+    if os.path.exists(DT_CHECKPOINT):
+        load_model(dt, DT_CHECKPOINT, map_location=device)
+        print(f"loaded DT checkpoint from {DT_CHECKPOINT}")
     else:
-        # just use random weights if no checkpoint found
-        print("warning: no checkpoint, using random weights")
-    model.to(device)
-    model.eval()
-    return model
+        print("warning: no DT checkpoint, using random weights")
+    dt.to(device).eval()
+
+    pt = None
+    if os.path.exists(PT_CHECKPOINT):
+        pt = PerceptionTransformer(state_dim=STATE_DIM, act_dim=ACT_DIM)
+        load_model(pt, PT_CHECKPOINT, map_location=device)
+        pt.to(device).eval()
+        print(f"loaded Perception checkpoint from {PT_CHECKPOINT}")
+    else:
+        print("warning: no Perception checkpoint, comparison tab will show DT only")
+
+    return dt, pt
 
 
-model = load_policy()
+model, perception_model = load_policies()
 
 
 def predict_action(target_rtg, *state_vals):
@@ -59,102 +80,158 @@ def predict_action(target_rtg, *state_vals):
     return out
 
 
-def run_hopper_episode(target_rtg_val):
-    # run in a subprocess because macOS crashes if mujoco renders in a background thread
-    import subprocess
-    import sys
-    os.makedirs(VIDEO_DIR, exist_ok=True)
-    for f in glob.glob(os.path.join(VIDEO_DIR, "*.mp4")):
-        os.remove(f)
-
-    # call this exact file but with a special CLI flag
-    subprocess.run([sys.executable, __file__, "record_video", str(target_rtg_val)])
-
-    videos = sorted(glob.glob(os.path.join(VIDEO_DIR, "*.mp4")))
-    video_path = videos[0] if videos else None
-    
-    # read summary
-    try:
-        with open("demo_videos/summary.txt", "r") as f:
-            summary = f.read().strip()
-    except:
-        summary = "Done! (see video)"
-
-    return video_path, summary
-
-def _record_video_subprocess(target_rtg_val):
+def _rollout(policy, target_return, seed, use_history):
+    """Run one episode and keep every rendered frame."""
     env = gym.make("Hopper-v4", render_mode="rgb_array")
-    env = gym.wrappers.RecordVideo(
-        env, video_folder=VIDEO_DIR,
-        episode_trigger=lambda ep: ep == 0,
-        disable_logger=True,
-    )
+    obs, _ = env.reset(seed=int(seed))
 
-    obs, _ = env.reset()
-    ep_reward = 0.0
-    rtg = float(target_rtg_val) / TARGET_RTG
+    rtg = float(target_return) / TARGET_RTG
+    total = 0.0
+    frames = []
     state_hist = [obs.astype(np.float32)]
     action_hist = [np.zeros(ACT_DIM, dtype=np.float32)]
     rtg_hist = [rtg]
-    done = False
 
-    while not done:
+    while True:
         with torch.no_grad():
-            try:
-                a = model.act(obs.astype(np.float32), target_rtg=rtg,
-                              state_history=state_hist, action_history=action_hist, rtg_history=rtg_hist)
-            except TypeError:
-                a = model.act(obs.astype(np.float32), target_rtg=rtg)
+            if use_history:
+                a = policy.act(obs.astype(np.float32), target_rtg=rtg,
+                               state_history=state_hist,
+                               action_history=action_hist,
+                               rtg_history=rtg_hist)
+            else:
+                a = policy.act(obs.astype(np.float32), target_rtg=rtg)
 
         a = np.clip(a, -1.0, 1.0)
         obs, rew, term, trunc, _ = env.step(a)
-        ep_reward += rew
+        total += rew
+        frames.append(env.render())
+
         rtg -= rew / TARGET_RTG
         state_hist.append(obs.astype(np.float32))
         action_hist.append(a.astype(np.float32))
         rtg_hist.append(float(rtg))
-        done = term or trunc
+        if term or trunc:
+            break
 
     env.close()
-    
-    with open("demo_videos/summary.txt", "w") as f:
-        f.write(f"done! total return: {ep_reward:.1f}")
+    return frames, total
+
+
+def _write(frames, path, fps, hold_last=0):
+    if hold_last:
+        frames = frames + [frames[-1]] * hold_last
+    imageio.mimwrite(path, frames, fps=fps, macro_block_size=1)
+
+
+def run_comparison(target_return, seed, slow_short):
+    """Called from the UI. Does the work in a subprocess (see note below)."""
+    os.makedirs(VIDEO_DIR, exist_ok=True)
+    for f in glob.glob(os.path.join(VIDEO_DIR, "*.mp4")):
+        os.remove(f)
+
+    # macOS crashes if mujoco renders off the main thread, and gradio callbacks
+    # run on a worker thread - so the rendering happens in a fresh process.
+    subprocess.run([sys.executable, __file__, "record",
+                    str(target_return), str(int(seed)), "1" if slow_short else "0"])
+
+    dt_path = os.path.join(VIDEO_DIR, "decision_transformer.mp4")
+    pt_path = os.path.join(VIDEO_DIR, "perception_transformer.mp4")
+
+    try:
+        with open(os.path.join(VIDEO_DIR, "summary.json")) as f:
+            s = json.load(f)
+        summary = (
+            f"Decision Transformer   return {s['dt_return']:8.1f}   {s['dt_steps']:4d} steps\n"
+            f"Perception Transformer return {s['pt_return']:8.1f}   {s['pt_steps']:4d} steps\n\n"
+            f"Same seed ({int(seed)}), same target return ({int(target_return)}), same eval loop.\n"
+            f"The Decision Transformer sees the full history; the Perceiver sees only\n"
+            f"the current state."
+        )
+        if s.get("dt_slowed"):
+            summary += f"\n\nDT clip played at {FPS_SLOW} fps so the fall is visible."
+    except Exception as e:
+        summary = f"finished, but could not read the summary ({e})"
+
+    return (dt_path if os.path.exists(dt_path) else None,
+            pt_path if os.path.exists(pt_path) else None,
+            summary)
+
+
+def _record_subprocess(target_return, seed, slow_short):
+    os.makedirs(VIDEO_DIR, exist_ok=True)
+
+    dt_frames, dt_return = _rollout(model, target_return, seed, use_history=True)
+    slowed = bool(slow_short) and len(dt_frames) < 150
+    _write(dt_frames, os.path.join(VIDEO_DIR, "decision_transformer.mp4"),
+           fps=FPS_SLOW if slowed else FPS_REAL,
+           hold_last=12 if slowed else 0)
+
+    if perception_model is not None:
+        pt_frames, pt_return = _rollout(perception_model, target_return, seed, use_history=False)
+        _write(pt_frames, os.path.join(VIDEO_DIR, "perception_transformer.mp4"), fps=FPS_REAL)
+    else:
+        pt_frames, pt_return = [], float("nan")
+
+    with open(os.path.join(VIDEO_DIR, "summary.json"), "w") as f:
+        json.dump({
+            "dt_return": dt_return, "dt_steps": len(dt_frames),
+            "pt_return": pt_return, "pt_steps": len(pt_frames),
+            "dt_slowed": slowed,
+        }, f)
 
 
 # build the UI
-with gr.Blocks(title="DT Hopper Demo", theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# Decision Transformer — Hopper-v4 Demo")
-    gr.Markdown("**CSE 676 Final** | Hemanth Phani Srinivas Chilamkurthy, Ravi Rajaram Singh")
+with gr.Blocks(title="Hopper Offline RL Demo", theme=gr.themes.Soft()) as demo:
+    gr.Markdown("# Decision Transformer vs Perception Transformer — Hopper-v4")
+    gr.Markdown("**CSE 676 Final** | Ravi Rajaram Singh, Hemanth Phani Srinivas Chilamkurthy")
 
     with gr.Tabs():
+
+        with gr.Tab("Run Episode — side by side"):
+            gr.Markdown(
+                "Runs **both** trained policies on the same seed and target return, then shows "
+                "each episode. Takes a few seconds.\n\n"
+                "The Decision Transformer usually falls within about 20 steps. The Perception "
+                "Transformer often keeps hopping for hundreds of steps, though its return varies "
+                "a lot between seeds — try a few."
+            )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    rtg_slider = gr.Slider(100, 3000, value=3000, step=100, label="Target Return")
+                    seed_input = gr.Number(value=0, precision=0, label="Episode seed (try 0, 2, 5, 7)")
+                    slow_check = gr.Checkbox(value=True, label="Slow down short episodes so they are watchable")
+                    run_btn = gr.Button("Run both & compare", variant="primary")
+                    episode_out = gr.Textbox(label="Result", lines=8)
+                with gr.Column(scale=2):
+                    with gr.Row():
+                        dt_video = gr.Video(label="Decision Transformer (726K params, sees history)")
+                        pt_video = gr.Video(label="Perception Transformer (1.9M params, state only)")
+
+            run_btn.click(fn=run_comparison,
+                          inputs=[rtg_slider, seed_input, slow_check],
+                          outputs=[dt_video, pt_video, episode_out],
+                          api_name=False)
 
         with gr.Tab("Predict Action"):
             gr.Markdown("Enter a state and target RTG to see what action the model picks.")
             with gr.Row():
                 with gr.Column():
                     rtg_input = gr.Number(value=1.0, label="Target RTG (normalized)")
-                    gr.Markdown("**State (11 values)**")
+                    gr.Markdown("**State (11 values)** — a fresh `env.reset()` looks like "
+                                "`1.2477, -0.0046, -0.0048, 0.0031, 0.0041, 0.0011, 0.0023, "
+                                "0.0004, 0.0044, 0.0032, -0.0050`")
                     state_inputs = [gr.Number(value=0.0, label=f"state[{i}]") for i in range(STATE_DIM)]
                     predict_btn = gr.Button("Get Action", variant="primary")
                 with gr.Column():
                     action_output = gr.Textbox(label="Output", lines=6)
-            predict_btn.click(fn=predict_action, inputs=[rtg_input] + state_inputs, outputs=action_output, api_name=False)
-
-        with gr.Tab("Run Hopper Episode"):
-            gr.Markdown("Runs a full episode and records video. Takes a few seconds.")
-            with gr.Row():
-                with gr.Column():
-                    rtg_slider = gr.Slider(100, 3000, value=1500, step=100, label="Target Return")
-                    run_btn = gr.Button("Run & Record", variant="primary")
-                    episode_out = gr.Textbox(label="Result", lines=2)
-                with gr.Column():
-                    video_out = gr.Video(label="Episode Video")
-            run_btn.click(fn=run_hopper_episode, inputs=[rtg_slider], outputs=[video_out, episode_out], api_name=False)
+            predict_btn.click(fn=predict_action,
+                              inputs=[rtg_input] + state_inputs,
+                              outputs=action_output, api_name=False)
 
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 2 and sys.argv[1] == "record_video":
-        _record_video_subprocess(float(sys.argv[2]))
+    if len(sys.argv) > 3 and sys.argv[1] == "record":
+        _record_subprocess(float(sys.argv[2]), int(sys.argv[3]), sys.argv[4] == "1")
     else:
         demo.launch(server_name="0.0.0.0", server_port=8000)

@@ -18,3 +18,4 @@ saved_models/*.pth
 model_comparison/
 preference_results/*.pth
 preference_results/*.npz
+demo_videos/
