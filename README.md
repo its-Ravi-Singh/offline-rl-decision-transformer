@@ -6,6 +6,19 @@
 
 We built an offline RL pipeline for MuJoCo continuous control. The main idea was to train a Decision Transformer on Hopper trajectories and then add a preference learning pipeline to study what happens when preference labels are noisy or wrong.
 
+## Highlights
+
+- Trained return-conditioned transformer policies purely from fixed offline data, with no online environment interaction during training.
+- Benchmarked three models on the D4RL Hopper simple, medium and expert splits.
+- Preference-weighted Decision Transformer beat the plain Decision Transformer on all three splits (for example, 24.0 to 67.4 on medium).
+- Deployed as a Gradio web demo with an action predictor and a live Hopper rollout video.
+
+## Demo
+
+![Decision Transformer vs Perception Transformer on Hopper](docs/hopper-comparison.gif)
+
+One example rollout from our trained checkpoints: the Decision Transformer falls early, while the Perception Transformer keeps hopping. This is a single episode, not an average. The 5-episode evaluation results are in the benchmark table below.
+
 ## What We Did
 
 1. Trained return-conditioned transformer policies from fixed offline data — no online environment interaction during training.
@@ -38,6 +51,7 @@ We started with CartPole for quick testing but moved to the real D4RL Hopper ben
 |   `-- preference_model.py         # segment preference model
 |-- d4rl_results/                   # benchmark plots, summaries, checkpoints
 |-- saved_models/                   # deployable checkpoints
+|-- docs/                           # project board screenshots and walkthrough GIF
 |-- DEPLOYMENT.md                   # how to run the demo
 `-- REPORT.md                       # project report
 ```
@@ -99,7 +113,7 @@ EPOCHS=10 BATCH_SIZE=512 CONTEXT_LEN=8 N_EVAL=5 MAX_WINDOWS=10000 python3 d4rl_c
 
 This compares Decision Transformer, DT + Preference, and Perception Transformer.
 
-Latest three-way benchmark:
+Latest three-way benchmark (evaluation return, using the settings in the command above):
 
 | Split | Decision Transformer | DT + Preference | Perception Transformer |
 | --- | ---: | ---: | ---: |
@@ -108,6 +122,8 @@ Latest three-way benchmark:
 | Expert | 68.6 | 88.3 | 80.6 |
 
 The preference-weighted DT improved over the normal DT on all three splits. Perception was strongest on simple and medium, while DT + Preference was strongest on expert.
+
+These runs use short training (10 epochs, 10,000 windows) and 5 evaluation episodes, so treat the numbers as indicative of the trend rather than final benchmark scores.
 
 ## Model Architecture
 
@@ -160,6 +176,16 @@ MODEL_CHECKPOINT=saved_models/decision_transformer_d4rl.pth python3 gradio_app.p
 ```
 
 Then open `http://127.0.0.1:8000`. Tab 1 lets you test the action predictor, Tab 2 runs a live Hopper episode and records a video.
+
+## Project Management
+
+We tracked the work on a GitHub Projects board (23 tasks in total) in our class organization. I was assigned 15 of them, some shared with my teammate, covering the proposal, dataset, model building, training, evaluation, documentation and improvements, from Mar 3 to Apr 30, 2026. All 15 are marked Done.
+
+![Project board: My items and Backlog views](docs/project-board-proof.png)
+
+![Project board walkthrough](docs/project-board-tour.gif)
+
+The board lives in the private class organization, so these screenshots are the proof. The commit history in this repo shows the same work.
 
 ## References
 
