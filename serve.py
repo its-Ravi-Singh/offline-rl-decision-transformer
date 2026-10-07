@@ -20,7 +20,7 @@ CHECKPOINT = os.environ.get(
 TARGET_RTG_MAX = float(os.environ.get("TARGET_RTG_MAX", "3000.0"))
 STATE_DIM = int(os.environ.get("STATE_DIM", "11"))
 ACT_DIM = int(os.environ.get("ACT_DIM", "3"))
-CONTEXT_LEN = int(os.environ.get("CONTEXT_LEN", "20"))
+CONTEXT_LEN = int(os.environ.get("CONTEXT_LEN", "8"))
 
 
 from typing import Optional, List
@@ -31,6 +31,7 @@ class ActionRequest(BaseModel):
     state_history: Optional[List[List[float]]] = None
     action_history: Optional[List[List[float]]] = None
     rtg_history: Optional[List[float]] = None
+    timestep: Optional[int] = None
 
     @model_validator(mode="after")
     def validate_histories(self):
@@ -107,6 +108,7 @@ def act(payload: ActionRequest):
             state_history=payload.state_history,
             action_history=payload.action_history,
             rtg_history=payload.rtg_history,
+            timestep=payload.timestep,
         )
         clipped = np.clip(action, -1.0, 1.0)
     except Exception as exc:

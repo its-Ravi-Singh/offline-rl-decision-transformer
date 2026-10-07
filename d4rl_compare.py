@@ -28,7 +28,7 @@ CONTEXT_LEN = int(os.environ.get("CONTEXT_LEN", "20"))
 N_EVAL = int(os.environ.get("N_EVAL", "10"))
 TARGET_RTG = float(os.environ.get("TARGET_RTG", "3000.0"))
 ENV_NAME = os.environ.get("ENV_NAME", "Hopper-v4")
-MAX_WINDOWS = os.environ.get("MAX_WINDOWS")
+MAX_WINDOWS = os.environ.get("MAX_WINDOWS", "50000")
 MAX_WINDOWS = None if MAX_WINDOWS in (None, "", "0") else int(MAX_WINDOWS)
 MAX_TRANSITIONS = os.environ.get("MAX_TRANSITIONS")
 MAX_TRANSITIONS = None if MAX_TRANSITIONS in (None, "", "0") else int(MAX_TRANSITIONS)
@@ -71,7 +71,7 @@ def make_dataset(buffer, model_key):
             buffer,
             context_len=CONTEXT_LEN,
             target_rtg=TARGET_RTG,
-            stride=CONTEXT_LEN,
+            stride=1,
             max_windows=MAX_WINDOWS,
         )
 
@@ -92,6 +92,8 @@ def run_model(split_label, buffer, model_key):
     if model_key == "decision_transformer":
         kwargs["context_len"] = CONTEXT_LEN
     model = spec["class"](**kwargs)
+    if hasattr(model, "set_state_stats"):
+        model.set_state_stats(buffer.state_mean, buffer.state_std)
 
     safe_name = f"{model_key}_{split_label}"
     print(f"\n  Training {spec['display']} on {split_label}")

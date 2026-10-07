@@ -27,7 +27,7 @@ PT_CHECKPOINT = os.environ.get("PT_CHECKPOINT", "saved_models/perception_transfo
 VIDEO_DIR = "demo_videos"
 STATE_DIM = 11   # hopper has 11 state dims
 ACT_DIM = 3      # and 3 action dims
-CONTEXT_LEN = 20
+CONTEXT_LEN = int(os.environ.get("CONTEXT_LEN", "8"))
 TARGET_RTG = 3000.0
 
 # Hopper renders at 125 fps, so a 20 step episode written at native speed is a
@@ -89,7 +89,7 @@ def _rollout(policy, target_return, seed, use_history):
     total = 0.0
     frames = []
     state_hist = [obs.astype(np.float32)]
-    action_hist = [np.zeros(ACT_DIM, dtype=np.float32)]
+    action_hist = []
     rtg_hist = [rtg]
 
     while True:
@@ -192,9 +192,8 @@ with gr.Blocks(title="Hopper Offline RL Demo", theme=gr.themes.Soft()) as demo:
             gr.Markdown(
                 "Runs **both** trained policies on the same seed and target return, then shows "
                 "each episode. Takes a few seconds.\n\n"
-                "The Decision Transformer usually falls within about 20 steps. The Perception "
-                "Transformer often keeps hopping for hundreds of steps, though its return varies "
-                "a lot between seeds — try a few."
+                "Both models were trained on the D4RL Hopper medium data. Their return varies "
+                "between seeds, so try a few."
             )
             with gr.Row():
                 with gr.Column(scale=1):
@@ -234,4 +233,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 3 and sys.argv[1] == "record":
         _record_subprocess(float(sys.argv[2]), int(sys.argv[3]), sys.argv[4] == "1")
     else:
-        demo.launch(server_name="0.0.0.0", server_port=8000)
+        demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", "8000")))

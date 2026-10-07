@@ -36,7 +36,7 @@ def evaluate(
         # normalize rtg same way we did during training
         rtg = 1.0
         state_history = [obs.astype(np.float32)]
-        action_history = [np.zeros(getattr(model, "act_dim", env.action_space.shape[0]), dtype=np.float32)]
+        action_history = []
         rtg_history = [rtg]
         done = False
 

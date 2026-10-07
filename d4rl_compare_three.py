@@ -106,7 +106,7 @@ def make_dataset(buffer, model_key):
             buffer,
             context_len=CONTEXT_LEN,
             target_rtg=TARGET_RTG,
-            stride=CONTEXT_LEN,
+            stride=1,
             max_windows=MAX_WINDOWS,
         )
         if model_key == "decision_transformer_preference":
@@ -139,6 +139,7 @@ def run_model(split_label, buffer, model_key):
             act_dim=buffer.act_dim,
             context_len=CONTEXT_LEN,
         )
+        model.set_state_stats(buffer.state_mean, buffer.state_std)
 
     safe_name = f"{model_key}_{split_label}"
     print(f"\nTraining {spec['display']} on {split_label}", flush=True)

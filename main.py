@@ -33,7 +33,7 @@ TARGET_RTG = float(os.environ.get("TARGET_RTG", "3000.0"))
 NUM_EVAL = int(os.environ.get("NUM_EVAL", "20"))
 RECORD_VIDEO = os.environ.get("RECORD_VIDEO", "1") not in {"0", "false", "False"}
 MODEL_FILE = "saved_models/decision_transformer_d4rl.pth"
-MAX_WINDOWS = os.environ.get("MAX_WINDOWS")
+MAX_WINDOWS = os.environ.get("MAX_WINDOWS", "50000")
 MAX_WINDOWS = None if MAX_WINDOWS in (None, "", "0") else int(MAX_WINDOWS)
 UPDATED_MODEL_FILE = os.environ.get(
     "UPDATED_MODEL_FILE", "saved_models/decision_transformer_d4rl_pref.pth"
@@ -107,7 +107,7 @@ def main():
         buffer,
         context_len=CONTEXT_LEN,
         target_rtg=TARGET_RTG,
-        stride=CONTEXT_LEN,
+        stride=1,
         max_windows=MAX_WINDOWS,
     )
     if USE_PREFERENCE_WEIGHTS and os.path.exists(PREFERENCE_MODEL_FILE):
@@ -125,9 +125,13 @@ def main():
         act_dim=buffer.act_dim,
         context_len=CONTEXT_LEN,
     )
-    if os.path.exists(INIT_MODEL_FILE):
+    model.set_state_stats(buffer.state_mean, buffer.state_std)
+    init_state = torch.load(INIT_MODEL_FILE, map_location="cpu") if os.path.exists(INIT_MODEL_FILE) else None
+    if init_state is not None and "state_mean" in init_state:
         print(f"loading initial DT weights from {INIT_MODEL_FILE}", flush=True)
-        model.load_state_dict(torch.load(INIT_MODEL_FILE, map_location="cpu"))
+        model.load_state_dict(init_state)
+    elif init_state is not None:
+        print(f"{INIT_MODEL_FILE} was trained without state normalization, training from scratch", flush=True)
     else:
         print(f"initial DT checkpoint not found at {INIT_MODEL_FILE}, training from scratch", flush=True)
 

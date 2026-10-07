@@ -60,6 +60,10 @@ class MinariTrajectoryBuffer:
         self.state_dim = int(self.trajectories[0].observations.shape[-1])
         self.act_dim = int(self.trajectories[0].actions.shape[-1])
         self.num_steps = int(sum(len(t.rewards) for t in self.trajectories))
+        all_obs = np.concatenate([t.observations for t in self.trajectories])
+        self.state_mean = all_obs.mean(axis=0)
+        self.state_std = all_obs.std(axis=0) + 1e-6
+
         returns = np.asarray([t.return_sum for t in self.trajectories], dtype=np.float32)
         self.return_stats = {
             "min": float(returns.min()),

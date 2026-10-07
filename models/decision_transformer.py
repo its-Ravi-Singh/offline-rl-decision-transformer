@@ -22,6 +22,10 @@ class DecisionTransformer(nn.Module):
         self.act_dim = act_dim
         self.context_len = context_len
 
+        # saved with the weights so inference uses the same normalization as training
+        self.register_buffer("state_mean", torch.zeros(state_dim))
+        self.register_buffer("state_std", torch.ones(state_dim))
+
         self.state_embed = nn.Linear(state_dim, hidden_dim)
         self.action_embed = nn.Linear(act_dim, hidden_dim)
         self.rtg_embed = nn.Linear(1, hidden_dim)
@@ -40,6 +44,10 @@ class DecisionTransformer(nn.Module):
         self.transformer = nn.TransformerEncoder(layer, num_layers=n_layers)
         self.norm = nn.LayerNorm(hidden_dim)
         self.action_head = nn.Sequential(nn.Linear(hidden_dim, act_dim), nn.Tanh())
+
+    def set_state_stats(self, mean, std):
+        self.state_mean.copy_(torch.as_tensor(mean, dtype=torch.float32))
+        self.state_std.copy_(torch.as_tensor(std, dtype=torch.float32))
 
     def _causal_mask(self, length, device):
         return torch.triu(
@@ -72,6 +80,7 @@ class DecisionTransformer(nn.Module):
             timesteps = torch.arange(states.shape[1], device=states.device)
             timesteps = timesteps.unsqueeze(0).repeat(states.shape[0], 1)
         timesteps = timesteps.clamp(max=self.timestep_embed.num_embeddings - 1)
+        states = (states - self.state_mean) / self.state_std
 
         batch, seq_len = states.shape[:2]
         time_emb = self.timestep_embed(timesteps)
@@ -98,53 +107,37 @@ class DecisionTransformer(nn.Module):
         pred_actions = self.action_head(state_hidden)
         return pred_actions[:, -1] if one_step else pred_actions
 
-    def act(self, state, target_rtg=1.0, state_history=None, action_history=None, rtg_history=None):
+    def act(self, state, target_rtg=1.0, state_history=None, action_history=None, rtg_history=None, timestep=None):
         self.eval()
         device = next(self.parameters()).device
+
+        if state_history is None:
+            state_history = [state]
+        if action_history is None:
+            action_history = []
+        if rtg_history is None or len(rtg_history) != len(state_history):
+            rtg_history = [target_rtg] * len(state_history)
+        if timestep is None:
+            timestep = len(state_history) - 1
+
+        k = min(len(state_history), self.context_len)
+        states = np.asarray(state_history[-k:], dtype=np.float32)
+        rtgs = np.asarray(rtg_history[-k:], dtype=np.float32)
+
+        # action i belongs to state i, the last one is the action we are predicting
+        actions = np.zeros((k, self.act_dim), dtype=np.float32)
+        past = list(action_history)[-(k - 1):] if k > 1 else []
+        if len(past) > 0:
+            actions[k - 1 - len(past):k - 1] = np.asarray(past, dtype=np.float32)
+
+        timesteps = np.arange(timestep - k + 1, timestep + 1).clip(min=0)
+
         with torch.no_grad():
-            if state_history is None:
-                states = torch.as_tensor(
-                    state, dtype=torch.float32, device=device
-                ).view(1, 1, -1)
-                actions = torch.zeros(1, 1, self.act_dim, dtype=torch.float32, device=device)
-                rtgs = torch.tensor([[[target_rtg]]], dtype=torch.float32, device=device)
-            else:
-                states_np = list(state_history)[-self.context_len :]
-                states = torch.as_tensor(
-                    np.asarray(states_np, dtype=np.float32),
-                    dtype=torch.float32,
-                    device=device,
-                ).unsqueeze(0)
-                if action_history is None:
-                    actions = torch.zeros(
-                        1, len(states_np), self.act_dim, dtype=torch.float32, device=device
-                    )
-                else:
-                    actions_np = list(action_history)[-self.context_len :]
-                    if len(actions_np) < len(states_np):
-                        pad = [torch.zeros(self.act_dim).numpy()] * (len(states_np) - len(actions_np))
-                        actions_np = pad + actions_np
-                    actions = torch.as_tensor(
-                        np.asarray(actions_np, dtype=np.float32),
-                        dtype=torch.float32,
-                        device=device,
-                    ).unsqueeze(0)
-                if rtg_history is None:
-                    rtgs = torch.full(
-                        (1, len(states_np), 1),
-                        float(target_rtg),
-                        dtype=torch.float32,
-                        device=device,
-                    )
-                else:
-                    rtgs = torch.as_tensor(
-                        list(rtg_history)[-self.context_len :],
-                        dtype=torch.float32,
-                        device=device,
-                    ).view(1, -1, 1)
-
-            action = self.forward(states, actions=actions, rtgs=rtgs)
-        return action[:, -1].squeeze(0).cpu().numpy()
-
+            s = torch.tensor(states, device=device).unsqueeze(0)
+            a = torch.tensor(actions, device=device).unsqueeze(0)
+            r = torch.tensor(rtgs, device=device).unsqueeze(0)
+            t = torch.tensor(timesteps, device=device).unsqueeze(0)
+            pred = self.forward(s, actions=a, rtgs=r, timesteps=t)
+        return pred[0, -1].cpu().numpy()
 
 PolicyNet = DecisionTransformer

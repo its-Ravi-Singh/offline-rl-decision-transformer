@@ -8,12 +8,13 @@ __pycache__/
 .matplotlib/
 .idea/
 
-minari_datasets/
+minari_datasets
 deployment_results/
 results/
 preference_results_smoke/
 
 d4rl_results/*.pth
+d4rl_three_way_results/*.pth
 saved_models/*.pth
 model_comparison/
 preference_results/*.pth

@@ -1,0 +1,4 @@
+numpy
+gymnasium[mujoco]
+gradio
+imageio[ffmpeg]

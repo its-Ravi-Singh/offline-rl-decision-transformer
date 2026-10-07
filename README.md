@@ -10,14 +10,15 @@ We built an offline RL pipeline for MuJoCo continuous control. The main idea was
 
 - Trained return-conditioned transformer policies purely from fixed offline data, with no online environment interaction during training.
 - Benchmarked three models on the D4RL Hopper simple, medium and expert splits.
-- Preference-weighted Decision Transformer beat the plain Decision Transformer on all three splits (for example, 24.0 to 67.4 on medium).
+- Fixed three bugs in the Decision Transformer pipeline (no state normalization, action history shifted by one step at evaluation, timesteps reset each window), which raised its Hopper return 6-20x on every split (24.0 to 476.1 on medium).
+- Preference weighting helped on simple and expert and slightly hurt on medium.
 - Deployed as a Gradio web demo with an action predictor and a live Hopper rollout video.
 
 ## Demo
 
 ![Decision Transformer vs Perception Transformer on Hopper](docs/hopper-comparison.gif)
 
-One example rollout from our trained checkpoints: the Decision Transformer falls early, while the Perception Transformer keeps hopping. This is a single episode, not an average. The 5-episode evaluation results are in the benchmark table below.
+One example rollout from the original checkpoints, recorded before the fixes below: the Decision Transformer falls early, while the Perception Transformer keeps hopping. The fixed Decision Transformer now hops too; current numbers are in the benchmark table.
 
 ## What We Did
 
@@ -109,22 +110,34 @@ Trains both models on all three Hopper splits and saves results to `d4rl_results
 For the final three-way benchmark:
 
 ```bash
-EPOCHS=10 BATCH_SIZE=512 CONTEXT_LEN=8 N_EVAL=5 MAX_WINDOWS=10000 python3 d4rl_compare_three.py
+EPOCHS=10 BATCH_SIZE=512 CONTEXT_LEN=8 N_EVAL=10 MAX_WINDOWS=10000 python3 d4rl_compare_three.py
 ```
 
 This compares Decision Transformer, DT + Preference, and Perception Transformer.
 
-Latest three-way benchmark (evaluation return, using the settings in the command above):
+Latest three-way benchmark (average return over 10 evaluation episodes, using the settings in the command above):
 
 | Split | Decision Transformer | DT + Preference | Perception Transformer |
 | --- | ---: | ---: | ---: |
-| Simple | 60.4 | 76.2 | 593.5 |
-| Medium | 24.0 | 67.4 | 555.3 |
-| Expert | 68.6 | 88.3 | 80.6 |
+| Simple | 834.9 | **861.0** | 544.6 |
+| Medium | 476.1 | 442.4 | **552.3** |
+| Expert | 429.7 | **571.4** | 47.7 |
 
-The preference-weighted DT improved over the normal DT on all three splits. Perception was strongest on simple and medium, while DT + Preference was strongest on expert.
+DT + Preference was best on simple and expert, and the Perception Transformer was best on medium. Preference weighting helped the DT on two of three splits (+26 on simple, +142 on expert) and hurt it on medium (-34).
 
-These runs use short training (10 epochs, 10,000 windows) and 5 evaluation episodes, so treat the numbers as indicative of the trend rather than final benchmark scores.
+These runs use short training (10 epochs, 10,000 windows), so treat the numbers as a comparison between models rather than final benchmark scores. Well-tuned offline RL methods reach a few thousand on Hopper.
+
+### Bugs we fixed
+
+The first version of this benchmark scored the Decision Transformer at 60.4 / 24.0 / 68.6, meaning the hopper fell over within about 20 steps. Three problems caused it:
+
+1. **No state normalization.** Hopper state values have very different scales. The model now stores the dataset mean and std with its weights and normalizes inside `forward`, so training, evaluation, the API and the demo all use the same numbers.
+2. **Action history off by one at evaluation.** Evaluation put a zero action at the front of the history, so each past action sat next to the wrong state. In training, action `t` always sits next to state `t`.
+3. **Timesteps restarted at 0.** Evaluation numbered every context window from 0, while training used the real episode step.
+
+Training also uses overlapping windows now (`stride=1` instead of `stride=context_len`).
+
+With the same data and training budget, the original code scores 16.5 on medium and the fixed code scores 418.9.
 
 ## Model Architecture
 
@@ -210,6 +223,21 @@ curl -X POST http://localhost:8000/act \
 ```
 
 The container reads `PORT` from the environment, so it runs as-is on hosts such as Google Cloud Run, Render or Railway.
+
+### Hugging Face Space (live Hopper video)
+
+`space/` holds a Dockerfile that runs the Gradio demo on a free Hugging Face Docker Space. MuJoCo renders with OSMesa (software OpenGL) because Spaces have no display. To publish it:
+
+1. Create a new Space on Hugging Face with the **Docker** SDK (blank template).
+2. Push this repo to the Space, with `space/Dockerfile` copied to the root as `Dockerfile` and a README that starts with:
+
+```yaml
+---
+title: Hopper Offline RL
+sdk: docker
+app_port: 7860
+---
+```
 
 ### Gradio demo
 

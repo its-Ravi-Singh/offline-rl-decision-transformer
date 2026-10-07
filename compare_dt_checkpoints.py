@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from evaluate import evaluate
+from utils.check import load_model as load_weights
 from models.decision_transformer import DecisionTransformer
 from models.perception_transformer import PerceptionTransformer
 
@@ -59,8 +60,11 @@ def get_device():
 
 
 def load_model(model_cls, checkpoint, device):
-    model = model_cls(state_dim=11, act_dim=3)
-    model.load_state_dict(torch.load(checkpoint, map_location=device))
+    if model_cls is DecisionTransformer:
+        model = model_cls(state_dim=11, act_dim=3, context_len=int(os.environ.get("CONTEXT_LEN", "8")))
+    else:
+        model = model_cls(state_dim=11, act_dim=3)
+    load_weights(model, checkpoint, map_location=device)
     model.to(device)
     model.eval()
     return model
