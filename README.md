@@ -12,13 +12,13 @@ We built an offline RL pipeline for MuJoCo continuous control. The main idea was
 - Benchmarked three models on the D4RL Hopper simple, medium and expert splits.
 - Fixed three bugs in the Decision Transformer pipeline (no state normalization, action history shifted by one step at evaluation, timesteps reset each window), which raised its Hopper return 6-20x on every split (24.0 to 476.1 on medium).
 - Preference weighting helped on simple and expert and slightly hurt on medium.
-- Deployed as a Gradio web demo with an action predictor and a live Hopper rollout video.
+- Served as a FastAPI inference API in a Docker image that GitHub Actions builds, smoke-tests and publishes on every change, plus a local Gradio demo with a live Hopper rollout video.
 
 ## Demo
 
 ![Decision Transformer vs Perception Transformer on Hopper](docs/hopper-comparison.gif)
 
-One example rollout from the original checkpoints, recorded before the fixes below: the Decision Transformer falls early, while the Perception Transformer keeps hopping. The fixed Decision Transformer now hops too; current numbers are in the benchmark table.
+Left: Decision Transformer. Right: Perception Transformer. Same seed (0), same target return, medium-trained checkpoints from `saved_models/`. In this episode the Decision Transformer scores 480.5 and the Perception Transformer 558.2. Both models vary between seeds, so see the benchmark table for the averages.
 
 ## What We Did
 
@@ -224,21 +224,6 @@ curl -X POST http://localhost:8000/act \
 
 The container reads `PORT` from the environment, so it runs as-is on hosts such as Google Cloud Run, Render or Railway.
 
-### Hugging Face Space (live Hopper video)
-
-`space/` holds a Dockerfile that runs the Gradio demo on a free Hugging Face Docker Space. MuJoCo renders with OSMesa (software OpenGL) because Spaces have no display. To publish it:
-
-1. Create a new Space on Hugging Face with the **Docker** SDK (blank template).
-2. Push this repo to the Space, with `space/Dockerfile` copied to the root as `Dockerfile` and a README that starts with:
-
-```yaml
----
-title: Hopper Offline RL
-sdk: docker
-app_port: 7860
----
-```
-
 ### Gradio demo
 
 Launch using Gradio:
@@ -247,7 +232,7 @@ Launch using Gradio:
 MODEL_CHECKPOINT=saved_models/decision_transformer_d4rl.pth python3 gradio_app.py
 ```
 
-Then open `http://127.0.0.1:8000`. Tab 1 lets you test the action predictor, Tab 2 runs a live Hopper episode and records a video.
+Then open `http://127.0.0.1:8000`. Rendering needs MuJoCo with a display (or `MUJOCO_GL=osmesa` on a headless machine). Tab 1 lets you test the action predictor, Tab 2 runs a live Hopper episode and records a video.
 
 ## Project Management
 
