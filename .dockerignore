@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.pyc
+docs
+plots
+d4rl_results
+d4rl_three_way_results
+preference_results
+minari_datasets
+demo_videos

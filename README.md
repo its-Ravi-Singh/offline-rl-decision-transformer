@@ -41,7 +41,8 @@ We started with CartPole for quick testing but moved to the real D4RL Hopper ben
 |-- compare_models.py               # compare saved checkpoints side by side
 |-- train_preference.py             # generate preference pairs, train preference model
 |-- analyze_preference_errors.py    # see where the preference model gets it wrong
-|-- deploy.py                       # quick rollout smoke test
+|-- serve.py                        # FastAPI inference API (/health, /act)
+|-- static/                         # small web UI served by the API at /ui
 |-- gradio_app.py                   # Gradio web demo (action predictor + Hopper video)
 |-- data/
 |   `-- dataset.py                  # trajectory buffer, sequence windows, preference pairs
@@ -52,7 +53,7 @@ We started with CartPole for quick testing but moved to the real D4RL Hopper ben
 |-- d4rl_results/                   # benchmark plots, summaries, checkpoints
 |-- saved_models/                   # deployable checkpoints
 |-- docs/                           # project board screenshots and walkthrough GIF
-|-- DEPLOYMENT.md                   # how to run the demo
+|-- Dockerfile                      # container image for the inference API
 `-- REPORT.md                       # project report
 ```
 
@@ -168,6 +169,49 @@ lower preference score -> smaller DT loss weight
 This is offline preference-weighted behavior cloning, not full online RLHF.
 
 ## Deployment
+
+### Inference API (FastAPI + Docker)
+
+`serve.py` serves the trained Decision Transformer over HTTP. Requests are validated with Pydantic, so a state with the wrong number of values is rejected with a 422 before it reaches the model.
+
+| Endpoint | Method | What it does |
+| --- | --- | --- |
+| `/health` | GET | Status, checkpoint, device and model dimensions |
+| `/act` | POST | Takes an 11-value Hopper state (plus optional history and target RTG) and returns the predicted action |
+| `/ui` | GET | Small browser dashboard for trying `/act` |
+| `/docs` | GET | Interactive OpenAPI docs |
+
+Run it with the prebuilt image (built and tested by GitHub Actions on every change):
+
+```bash
+docker run -p 8000:8000 ghcr.io/its-ravi-singh/offline-rl-decision-transformer:latest
+```
+
+Or build it yourself:
+
+```bash
+docker build -t dt-api .
+docker run -p 8000:8000 dt-api
+```
+
+Or run it without Docker:
+
+```bash
+pip install -r requirements.txt
+uvicorn serve:app --port 8000
+```
+
+Example request:
+
+```bash
+curl -X POST http://localhost:8000/act \
+  -H "Content-Type: application/json" \
+  -d '{"state": [1.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "target_rtg": 1.0}'
+```
+
+The container reads `PORT` from the environment, so it runs as-is on hosts such as Google Cloud Run, Render or Railway.
+
+### Gradio demo
 
 Launch using Gradio:
 

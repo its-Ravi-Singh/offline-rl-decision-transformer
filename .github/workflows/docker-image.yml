@@ -1,0 +1,64 @@
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - serve.py
+      - models/**
+      - utils/**
+      - static/**
+      - saved_models/**
+      - Dockerfile
+      - requirements-api.txt
+      - .github/workflows/docker-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/its-ravi-singh/offline-rl-decision-transformer
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t "$IMAGE:latest" -t "$IMAGE:${GITHUB_SHA::7}" .
+
+      - name: Smoke test the running container
+        run: |
+          docker run -d --name api -p 8000:8000 "$IMAGE:latest"
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health && break
+            sleep 2
+          done
+          echo
+          curl -sf http://localhost:8000/health | grep '"status":"ok"'
+          curl -sf -X POST http://localhost:8000/act \
+            -H "Content-Type: application/json" \
+            -d '{"state":[1.25,0,0,0,0,0,0,0,0,0,0],"target_rtg":1.0}' | grep '"action"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8000/act \
+            -H "Content-Type: application/json" -d '{"state":[0.1,0.1,0.1]}')
+          test "$code" = "422"
+          echo "health ok, /act ok, bad input rejected with 422"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs api || true
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        run: |
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:${GITHUB_SHA::7}"
