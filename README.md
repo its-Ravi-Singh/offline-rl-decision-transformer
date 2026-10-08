@@ -29,6 +29,32 @@ Same seed (0), same target return, both trained on the D4RL Hopper medium data. 
 
 On 8 seeds (0 to 7) the Decision Transformer scored 453 to 488 and the Perception Transformer 547 to 558, so on this checkpoint the Perception Transformer is ahead. Both models still fall before the episode limit. The full benchmark is in the table below.
 
+## Benchmark
+
+```bash
+EPOCHS=10 BATCH_SIZE=512 CONTEXT_LEN=8 N_EVAL=10 MAX_WINDOWS=10000 python3 d4rl_compare_three.py
+```
+
+Average return over 10 evaluation episodes on Hopper-v4:
+
+| Split | Decision Transformer | DT + Preference | Perception Transformer |
+| --- | ---: | ---: | ---: |
+| Simple | 834.9 | **861.0** | 544.6 |
+| Medium | 476.1 | 442.4 | **552.3** |
+| Expert | 429.7 | **571.4** | 47.7 |
+
+DT + Preference was best on simple and expert, and the Perception Transformer was best on medium. Preference weighting helped the DT on two of three splits (+26 on simple, +142 on expert) and hurt it on medium (-34). The simple split varies a lot between episodes (std above 200 for both DT models), so its ranking is not reliable.
+
+These runs use short training (10 epochs, 10,000 windows), so treat the numbers as a comparison between models rather than final scores. Well-tuned offline RL methods reach a few thousand on Hopper. Raw numbers are in `d4rl_three_way_results/summary.csv`.
+
+### Bugs we fixed
+
+The first version of this benchmark scored the Decision Transformer at 60.4 / 24.0 / 68.6 (the numbers in `REPORT.md`), meaning the hopper fell over within about 20 steps. Three problems caused it:
+
+1. **No state normalization.** Hopper state values have very different scales. The model now stores the dataset mean and std with its weights and normalizes inside `forward`, so training, evaluation, the API and the demo all use the same numbers.
+2. **Action history off by one at evaluation.** Evaluation put a zero action at the front of the history, so each past action sat next to the wrong state. In training, action `t` always sits next to state `t`.
+3. **Timesteps restarted at 0.** Evaluation numbered every context window from 0, while training used the real episode step.
+
 ## Deployment
 
 ### Inference API (FastAPI + Docker)

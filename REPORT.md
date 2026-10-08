@@ -6,6 +6,8 @@
 
 **Members:** Ravi Rajaram Singh, Hemanth Phani Srinivas Chilamkurthy
 
+> **Update (Oct 2026):** this is the report we submitted at the end of the course. After it, I found three bugs in the Decision Transformer pipeline (no state normalization, action history shifted by one step at evaluation, timesteps reset for every window). Fixing them raised the Decision Transformer's return 6-20x on every split (24.0 to 476.1 on medium) and changed some conclusions: preference weighting now helps on simple and expert but slightly hurts on medium, and the Perception Transformer only leads on medium. The result tables below are from before the fix. The current numbers are in the [README](README.md#benchmark).
+
 ---
 
 ## Overview
